@@ -6,7 +6,7 @@ const pool = new Pool({
   host: process.env.POSTGRES_HOST || 'localhost',
   database: process.env.POSTGRES_DB || 'swarmshare',
   password: process.env.POSTGRES_PASSWORD || 'password',
-  port: process.env.POSTGRES_PORT || 5433,
+  port: process.env.POSTGRES_PORT || 5434,
 });
 
 pool.on('error', (err, client) => {

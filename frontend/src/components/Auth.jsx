@@ -29,7 +29,11 @@ export default function Auth({ setToken }) {
       localStorage.setItem('swarmshare_token', data.token);
       navigate('/files');
     } catch (err) {
-      setError(err.message);
+      if (err.message === 'Failed to fetch' || err.message === 'Invalid credentials') {
+        setError('No user detected or incorrect password');
+      } else {
+        setError(err.message);
+      }
     }
   };
 
@@ -72,7 +76,12 @@ export default function Auth({ setToken }) {
           {isLogin ? "Don't have an account? " : "Already have an account? "}
           <span 
             style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: 'bold' }} 
-            onClick={() => setIsLogin(!isLogin)}
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setEmail('');
+              setPassword('');
+              setError('');
+            }}
           >
             {isLogin ? 'Sign Up' : 'Log In'}
           </span>

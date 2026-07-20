@@ -5,6 +5,10 @@ export default function FileList({ token }) {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  const [passwordPromptFile, setPasswordPromptFile] = useState(null);
+  const [downloadPassword, setDownloadPassword] = useState('');
+  const [downloadError, setDownloadError] = useState('');
 
   useEffect(() => {
     fetchFiles();
@@ -25,20 +29,43 @@ export default function FileList({ token }) {
     }
   };
 
-  const handleDownload = async (fileId) => {
+  const handleDownloadClick = (file) => {
+    if (!file.is_public) {
+      setPasswordPromptFile(file);
+      setDownloadPassword('');
+      setDownloadError('');
+    } else {
+      handleDownload(file.id, null);
+    }
+  };
+
+  const handleDownload = async (fileId, pwd) => {
     try {
+      setDownloadError('');
       // 1. Fetch Manifest & Seeders
       const res = await fetch(`http://localhost:3001/api/files/${fileId}/manifest`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ password: pwd })
       });
-      if (!res.ok) throw new Error('Failed to fetch manifest');
+      if (!res.ok) {
+        if (res.status === 403) throw new Error('Incorrect password');
+        throw new Error('Failed to fetch manifest');
+      }
       
       const { file, chunks, seeders } = await res.json();
       
       // 2. Start P2P download
       swarmManager.startDownload(file, chunks, seeders);
+      setPasswordPromptFile(null);
     } catch (err) {
-      alert(`Error initiating download: ${err.message}`);
+      setDownloadError(err.message);
+      if (!passwordPromptFile) {
+        alert(`Error initiating download: ${err.message}`);
+      }
     }
   };
 
@@ -59,17 +86,41 @@ export default function FileList({ token }) {
           {files.map(file => (
             <li key={file.id} className="file-item">
               <div>
-                <strong>{file.file_name}</strong>
+                <strong>{!file.is_public && '🔒 '} {file.file_name}</strong>
                 <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
                   Size: {(file.total_size / (1024 * 1024)).toFixed(2)} MB | Seeded by: {file.owner}
                 </div>
               </div>
-              <button className="btn" onClick={() => handleDownload(file.id)}>
+              <button className="btn" onClick={() => handleDownloadClick(file)}>
                 Download
               </button>
             </li>
           ))}
         </ul>
+      )}
+
+      {passwordPromptFile && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }}>
+          <div className="glass-panel" style={{ width: '90%', maxWidth: '400px' }}>
+            <h3>Private File</h3>
+            <p style={{ marginBottom: '1rem' }}>Please enter the password to download <strong>{passwordPromptFile.file_name}</strong>.</p>
+            {downloadError && <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{downloadError}</div>}
+            <input
+              type="password"
+              placeholder="Password"
+              value={downloadPassword}
+              onChange={e => setDownloadPassword(e.target.value)}
+              style={{ width: '100%', padding: '0.5rem', marginBottom: '1rem' }}
+            />
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button className="btn" onClick={() => setPasswordPromptFile(null)} style={{ background: 'transparent', border: '1px solid var(--glass-border)' }}>Cancel</button>
+              <button className="btn" onClick={() => handleDownload(passwordPromptFile.id, downloadPassword)} style={{ flex: 1 }}>Confirm Download</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

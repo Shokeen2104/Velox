@@ -6,6 +6,8 @@ export default function FileRegister({ token, onFileRegistered }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
+  const [isPublic, setIsPublic] = useState(true);
+  const [password, setPassword] = useState('');
   const fileInputRef = useRef(null);
 
   // We use 256KB chunks (BitTorrent typically uses 256KB to 1MB)
@@ -40,7 +42,7 @@ export default function FileRegister({ token, onFileRegistered }) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(manifest)
+        body: JSON.stringify({ ...manifest, isPublic, password })
       });
 
       const data = await res.json();
@@ -90,10 +92,30 @@ export default function FileRegister({ token, onFileRegistered }) {
 
       {file && (
         <div style={{ marginTop: '1.5rem' }}>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input 
+                type="checkbox" 
+                checked={!isPublic} 
+                onChange={(e) => setIsPublic(!e.target.checked)} 
+              />
+              Make this file Private (requires password)
+            </label>
+            {!isPublic && (
+              <input 
+                type="password"
+                placeholder="Enter a password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={{ marginTop: '0.5rem', width: '100%' }}
+                className="input-group"
+              />
+            )}
+          </div>
           <button 
             className="btn" 
             onClick={handleRegister} 
-            disabled={isProcessing}
+            disabled={isProcessing || (!isPublic && !password)}
             style={{ width: '100%' }}
           >
             {isProcessing ? 'Processing...' : 'Register & Start Seeding'}

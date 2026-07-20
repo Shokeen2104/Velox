@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS files (
   total_size BIGINT NOT NULL,
   chunk_size INTEGER NOT NULL,
   total_chunks INTEGER NOT NULL,
+  is_public BOOLEAN DEFAULT true,
+  password_hash VARCHAR(255),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
