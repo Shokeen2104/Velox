@@ -5,10 +5,17 @@ export default function FileList({ token }) {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [passwordPromptFile, setPasswordPromptFile] = useState(null);
   const [downloadPassword, setDownloadPassword] = useState('');
   const [downloadError, setDownloadError] = useState('');
+
+  const parseJwt = (t) => {
+    try { return JSON.parse(atob(t.split('.')[1])); }
+    catch (e) { return null; }
+  };
+  const currentUserEmail = parseJwt(token)?.email;
 
   useEffect(() => {
     fetchFiles();
@@ -69,8 +76,32 @@ export default function FileList({ token }) {
     }
   };
 
+  const handleDelete = async (fileId) => {
+    if (!window.confirm("Are you sure you want to delete this file? This will remove it for everyone.")) return;
+    
+    try {
+      const res = await fetch(`http://localhost:3001/api/files/${fileId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to delete file');
+      }
+      
+      // Update state to remove the file
+      setFiles(files.filter(f => f.id !== fileId));
+    } catch (err) {
+      alert(`Error deleting file: ${err.message}`);
+    }
+  };
+
   if (loading) return <div>Loading files...</div>;
   if (error) return <div style={{ color: 'var(--danger)' }}>{error}</div>;
+
+  const filteredFiles = files.filter(file => 
+    file.file_name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div className="glass-panel" style={{ marginTop: '2rem' }}>
@@ -79,11 +110,20 @@ export default function FileList({ token }) {
         Click download to find seeders and initiate a P2P WebRTC transfer.
       </p>
 
-      {files.length === 0 ? (
-        <p>No files available on the network yet.</p>
+      <input
+        type="text"
+        placeholder="Search files by name..."
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        className="input-group"
+        style={{ width: '100%', marginBottom: '1.5rem', padding: '0.5rem' }}
+      />
+
+      {filteredFiles.length === 0 ? (
+        <p>{searchQuery ? 'No matching files found.' : 'No files available on the network yet.'}</p>
       ) : (
         <ul className="file-list">
-          {files.map(file => (
+          {filteredFiles.map(file => (
             <li key={file.id} className="file-item">
               <div>
                 <strong>{!file.is_public && '🔒 '} {file.file_name}</strong>
@@ -91,9 +131,16 @@ export default function FileList({ token }) {
                   Size: {(file.total_size / (1024 * 1024)).toFixed(2)} MB | Seeded by: {file.owner}
                 </div>
               </div>
-              <button className="btn" onClick={() => handleDownloadClick(file)}>
-                Download
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {file.owner === currentUserEmail && (
+                  <button className="btn" style={{ background: 'var(--danger)', color: 'white' }} onClick={() => handleDelete(file.id)}>
+                    Delete
+                  </button>
+                )}
+                <button className="btn" onClick={() => handleDownloadClick(file)}>
+                  Download
+                </button>
+              </div>
             </li>
           ))}
         </ul>

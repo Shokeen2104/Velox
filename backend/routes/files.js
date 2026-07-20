@@ -128,4 +128,33 @@ router.post('/:id/manifest', authenticateToken, async (req, res) => {
   }
 });
 
+// Endpoint to delete a file
+router.delete('/:id', authenticateToken, async (req, res) => {
+  try {
+    const fileId = req.params.id;
+    const userId = req.user.userId;
+
+    // Check ownership
+    const fileRes = await db.query('SELECT owner_id FROM files WHERE id = $1', [fileId]);
+    if (fileRes.rows.length === 0) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
+    if (fileRes.rows[0].owner_id !== userId) {
+      return res.status(403).json({ error: 'Not authorized to delete this file' });
+    }
+
+    // Delete file
+    await db.query('DELETE FROM files WHERE id = $1', [fileId]);
+    
+    // Clean up Redis
+    await redisClient.del(`file:seeders:${fileId}`);
+
+    res.json({ message: 'File deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting file:', error);
+    res.status(500).json({ error: 'Failed to delete file' });
+  }
+});
+
 module.exports = router;

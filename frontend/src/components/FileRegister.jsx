@@ -55,6 +55,15 @@ export default function FileRegister({ token, onFileRegistered }) {
       if (onFileRegistered) {
         onFileRegistered(data.fileId, file); // Keep reference to actual file for seeding later
       }
+      
+      // Clear the form
+      setFile(null);
+      setPassword('');
+      setIsPublic(true);
+      setProgress(0);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (error) {
       console.error(error);
       setStatus(`Error: ${error.message}`);
