@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { swarmManager } from '../utils/SwarmManager';
+import { useToast } from './Toast';
 
-export default function FileList({ token }) {
+export default function FileList({ token, activeTab }) {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -16,10 +17,39 @@ export default function FileList({ token }) {
     catch (e) { return null; }
   };
   const currentUserEmail = parseJwt(token)?.email;
+  const addToast = useToast();
+  const [activeDownloads, setActiveDownloads] = useState({});
 
   useEffect(() => {
     fetchFiles();
+    
+    const handleStateChange = (state) => {
+      const dlMap = {};
+      state.downloads.forEach(dl => {
+        dlMap[dl.file.id] = dl;
+      });
+      setActiveDownloads(dlMap);
+    };
+    swarmManager.addListener(handleStateChange);
+    return () => swarmManager.removeListener(handleStateChange);
   }, []);
+
+  useEffect(() => {
+    Object.values(activeDownloads).forEach(dl => {
+      if (dl.status === 'complete' && !dl._toastShown) {
+        addToast(`Download complete: ${dl.file.file_name}`, 'success');
+        dl._toastShown = true;
+      }
+    });
+  }, [activeDownloads, addToast]);
+
+  const getFileTypeProps = (filename) => {
+    const ext = filename.includes('.') ? filename.split('.').pop().toUpperCase() : 'FILE';
+    if (ext === 'PDF') return { text: 'PDF', bg: '#423122', color: '#fbbf24' };
+    if (ext === 'DB' || ext === 'ACCDB') return { text: 'DB', bg: '#113528', color: '#34d399' };
+    if (ext === 'DOC' || ext === 'DOCX') return { text: 'DOC', bg: '#2e2548', color: '#c084fc' };
+    return { text: ext.substring(0, 3) || 'FILE', bg: '#1e293b', color: '#94a3b8' };
+  };
 
   const fetchFiles = async () => {
     try {
@@ -68,10 +98,11 @@ export default function FileList({ token }) {
       // 2. Start P2P download
       swarmManager.startDownload(file, chunks, seeders);
       setPasswordPromptFile(null);
+      addToast(`Download started for ${file.file_name}`, 'info');
     } catch (err) {
       setDownloadError(err.message);
       if (!passwordPromptFile) {
-        alert(`Error initiating download: ${err.message}`);
+        addToast(`Error initiating download: ${err.message}`, 'error');
       }
     }
   };
@@ -91,23 +122,31 @@ export default function FileList({ token }) {
       
       // Update state to remove the file
       setFiles(files.filter(f => f.id !== fileId));
+      addToast('File deleted successfully', 'success');
     } catch (err) {
-      alert(`Error deleting file: ${err.message}`);
+      addToast(`Error deleting file: ${err.message}`, 'error');
     }
   };
 
   if (loading) return <div>Loading files...</div>;
   if (error) return <div style={{ color: 'var(--danger)' }}>{error}</div>;
 
-  const filteredFiles = files.filter(file => 
-    file.file_name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredFiles = files.filter(file => {
+    const matchesSearch = file.file_name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTab = activeTab === 'uploads' ? file.owner === currentUserEmail : 
+                       activeTab === 'downloads' ? file.owner !== currentUserEmail : 
+                       true; // 'home' matches all
+    return matchesSearch && matchesTab;
+  });
 
   return (
     <div className="glass-panel" style={{ marginTop: '2rem' }}>
-      <h3>Available Files for Download</h3>
-      <p style={{ color: '#cbd5e1', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-        Click download to find seeders and initiate a P2P WebRTC transfer.
+      <p style={{ color: '#94a3b8', fontSize: '1rem', marginBottom: '1.5rem' }}>
+        {activeTab === 'downloads' 
+          ? 'Browse and download files shared by others.' 
+          : activeTab === 'uploads'
+          ? 'Manage the files you have uploaded to the network.'
+          : 'All files currently available on the network.'}
       </p>
 
       <input
@@ -123,26 +162,66 @@ export default function FileList({ token }) {
         <p>{searchQuery ? 'No matching files found.' : 'No files available on the network yet.'}</p>
       ) : (
         <ul className="file-list">
-          {filteredFiles.map(file => (
-            <li key={file.id} className="file-item">
-              <div>
-                <strong>{!file.is_public && '🔒 '} {file.file_name}</strong>
-                <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                  Size: {(file.total_size / (1024 * 1024)).toFixed(2)} MB | Seeded by: {file.owner}
+          {filteredFiles.map(file => {
+            const dlState = activeDownloads[file.id];
+            const isDownloading = dlState && dlState.status !== 'complete';
+            const isComplete = dlState && dlState.status === 'complete';
+            const progress = dlState ? dlState.progress || 0 : 0;
+            const typeProps = getFileTypeProps(file.file_name);
+
+            return (
+              <li key={file.id} className="file-item" style={{ alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                  
+                  <div className="type-icon" style={{ background: typeProps.bg, color: typeProps.color }}>
+                    {typeProps.text}
+                  </div>
+
+                  <div>
+                    <strong style={{ fontSize: '1.1rem' }}>{!file.is_public && '🔒 '} {file.file_name}</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#94a3b8', marginTop: '0.4rem', fontFamily: 'monospace' }}>
+                      <span className="seeder-badge">1</span>
+                      {(file.total_size / (1024 * 1024)).toFixed(2)} MB &bull; seeded by {file.owner}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {file.owner === currentUserEmail && (
-                  <button className="btn" style={{ background: 'var(--danger)', color: 'white' }} onClick={() => handleDelete(file.id)}>
-                    Delete
-                  </button>
-                )}
-                <button className="btn" onClick={() => handleDownloadClick(file)}>
-                  Download
-                </button>
-              </div>
-            </li>
-          ))}
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  {file.owner === currentUserEmail && (
+                    <button className="btn" style={{ background: 'transparent', border: '1px solid var(--danger)', color: 'var(--danger)' }} onClick={() => handleDelete(file.id)}>
+                      Delete
+                    </button>
+                  )}
+                  
+                  {isDownloading || isComplete ? (
+                    <button 
+                      className="btn" 
+                      disabled={isComplete}
+                      style={{ 
+                        position: 'relative', overflow: 'hidden', 
+                        background: isComplete ? 'var(--success)' : 'rgba(255,255,255,0.1)',
+                        border: isComplete ? 'none' : '1px solid var(--primary)',
+                        width: '120px', padding: '0.75rem 1.5rem', borderRadius: '8px'
+                      }}
+                    >
+                      {!isComplete && (
+                        <div style={{ 
+                          position: 'absolute', top: 0, left: 0, bottom: 0, 
+                          background: 'var(--primary)', width: `${progress}%`, transition: 'width 0.2s', zIndex: 0 
+                        }} />
+                      )}
+                      <span style={{ position: 'relative', zIndex: 1, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
+                        {isComplete ? 'Complete!' : `${Math.round(progress)}%`}
+                      </span>
+                    </button>
+                  ) : (
+                    <button className="btn" onClick={() => handleDownloadClick(file)}>
+                      Download
+                    </button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
 

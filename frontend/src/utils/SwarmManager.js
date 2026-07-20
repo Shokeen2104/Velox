@@ -6,7 +6,7 @@ export class SwarmManager {
     this.dataChannels = new Map();
     this.seededFiles = new Map();
     this.activeDownloads = new Map();
-    this.onStateChange = null;
+    this.listeners = [];
 
     signalingManager.on('offer', this.handleOffer.bind(this));
     signalingManager.on('answer', this.handleAnswer.bind(this));
@@ -15,13 +15,24 @@ export class SwarmManager {
     this.lastIncomingHeader = null;
   }
 
+  addListener(callback) {
+    this.listeners.push(callback);
+    callback({
+      peers: Array.from(this.peers.keys()),
+      downloads: Array.from(this.activeDownloads.values())
+    });
+  }
+
+  removeListener(callback) {
+    this.listeners = this.listeners.filter(cb => cb !== callback);
+  }
+
   notifyUI() {
-    if (this.onStateChange) {
-      this.onStateChange({
-        peers: Array.from(this.peers.keys()),
-        downloads: Array.from(this.activeDownloads.values())
-      });
-    }
+    const state = {
+      peers: Array.from(this.peers.keys()),
+      downloads: Array.from(this.activeDownloads.values())
+    };
+    this.listeners.forEach(cb => cb(state));
   }
 
   startSeeding(fileId, fileBlob) {

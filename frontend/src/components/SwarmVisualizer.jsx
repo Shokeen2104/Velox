@@ -5,12 +5,14 @@ export default function SwarmVisualizer() {
   const [swarmState, setSwarmState] = useState({ peers: [], downloads: [] });
 
   useEffect(() => {
-    swarmManager.onStateChange = (state) => {
-      // Force re-render with new state
+    const handleStateChange = (state) => {
       setSwarmState({ ...state });
     };
+    
+    swarmManager.addListener(handleStateChange);
+    
     return () => {
-      swarmManager.onStateChange = null;
+      swarmManager.removeListener(handleStateChange);
     };
   }, []);
 
