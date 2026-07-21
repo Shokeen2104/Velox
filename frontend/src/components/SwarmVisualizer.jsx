@@ -1,14 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
-import Particles from "@tsparticles/react";
-import { loadSlim } from "@tsparticles/slim";
+import { useState, useEffect, useRef } from 'react';
 import { swarmManager } from '../utils/SwarmManager';
 
 export default function SwarmVisualizer() {
   const [swarmState, setSwarmState] = useState({ peers: [], downloads: [] });
-
-  const particlesInit = useCallback(async (engine) => {
-    await loadSlim(engine);
-  }, []);
+  const canvasRef = useRef(null);
 
   useEffect(() => {
     const handleStateChange = (state) => {
@@ -22,9 +17,83 @@ export default function SwarmVisualizer() {
     };
   }, []);
 
-  // Use the number of peers to increase the number of nodes in the visualization
-  // Base nodes = 5, plus 5 per peer
-  const nodeCount = 5 + (swarmState.peers.length * 5);
+  // Native HTML5 Canvas Particle Engine
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    
+    const resize = () => {
+      canvas.width = canvas.parentElement.clientWidth;
+      canvas.height = canvas.parentElement.clientHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const nodeCount = 15 + (swarmState.peers.length * 5);
+    const particles = [];
+    
+    for (let i = 0; i < nodeCount; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: (Math.random() - 0.5) * 1.5,
+        radius: Math.random() * 2 + 1.5
+      });
+    }
+
+    let animationFrameId;
+    
+    const render = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        
+        // Move
+        p.x += p.vx;
+        p.y += p.vy;
+        
+        // Bounce
+        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+        
+        // Draw Dot
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#10b981';
+        ctx.fill();
+        
+        // Draw Connections
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j];
+          const dx = p.x - p2.x;
+          const dy = p.y - p2.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist < 120) {
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p2.x, p2.y);
+            // Opacity fades as they get further apart
+            ctx.strokeStyle = `rgba(16, 185, 129, ${0.4 * (1 - dist / 120)})`;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        }
+      }
+      
+      animationFrameId = requestAnimationFrame(render);
+    };
+    
+    render();
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [swarmState.peers.length]);
 
   return (
     <div style={{
@@ -49,49 +118,8 @@ export default function SwarmVisualizer() {
       </div>
       
       <div style={{ position: 'relative', height: '220px', background: '#0a0f1d' }}>
-        <Particles
-          id="tsparticles"
-          init={particlesInit}
-          options={{
-            background: {
-              color: { value: "transparent" },
-            },
-            fpsLimit: 60,
-            interactivity: {
-              events: {
-                onHover: { enable: true, mode: "grab" },
-              },
-              modes: {
-                grab: { distance: 140, links: { opacity: 0.5 } }
-              },
-            },
-            particles: {
-              color: { value: "#10b981" },
-              links: {
-                color: "#10b981",
-                distance: 150,
-                enable: true,
-                opacity: 0.2,
-                width: 1,
-              },
-              move: {
-                direction: "none",
-                enable: true,
-                outModes: { default: "bounce" },
-                random: false,
-                speed: 1,
-                straight: false,
-              },
-              number: {
-                density: { enable: true, area: 800 },
-                value: nodeCount,
-              },
-              opacity: { value: 0.5 },
-              shape: { type: "circle" },
-              size: { value: { min: 2, max: 4 } },
-            },
-            detectRetina: true,
-          }}
+        <canvas 
+          ref={canvasRef} 
           style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
         />
         

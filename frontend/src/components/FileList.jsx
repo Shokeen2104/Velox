@@ -53,7 +53,8 @@ export default function FileList({ token, activeTab }) {
 
   const fetchFiles = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/files', {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const res = await fetch(`${API_URL}/api/files`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) throw new Error('Failed to fetch files');
@@ -80,7 +81,8 @@ export default function FileList({ token, activeTab }) {
     try {
       setDownloadError('');
       // 1. Fetch Manifest & Seeders
-      const res = await fetch(`http://localhost:3001/api/files/${fileId}/manifest`, {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const res = await fetch(`${API_URL}/api/files/${fileId}/manifest`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -111,7 +113,8 @@ export default function FileList({ token, activeTab }) {
     if (!window.confirm("Are you sure you want to delete this file? This will remove it for everyone.")) return;
     
     try {
-      const res = await fetch(`http://localhost:3001/api/files/${fileId}`, {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const res = await fetch(`${API_URL}/api/files/${fileId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });

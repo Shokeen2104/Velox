@@ -14,7 +14,8 @@ export default function Auth({ setToken }) {
 
     const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
     try {
-      const res = await fetch(`http://localhost:3001${endpoint}`, {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const res = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })

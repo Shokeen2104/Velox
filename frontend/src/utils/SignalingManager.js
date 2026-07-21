@@ -8,8 +8,8 @@ class SignalingManager {
 
   connect(token) {
     if (this.socket) return;
-
-    this.socket = io('http://localhost:3001', {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    this.socket = io(API_URL, {
       auth: { token }
     });
 
