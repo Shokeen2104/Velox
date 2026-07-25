@@ -72,6 +72,14 @@ class SignalingManager {
     }
   }
 
+  removeAllListeners(event) {
+    if (event) {
+      this.listeners.delete(event);
+    } else {
+      this.listeners.clear();
+    }
+  }
+
   _emit(event, data) {
     if (this.listeners.has(event)) {
       this.listeners.get(event).forEach(cb => cb(data));

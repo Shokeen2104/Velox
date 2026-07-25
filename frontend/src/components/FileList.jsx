@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { swarmManager } from '../utils/SwarmManager';
 import { useToast } from './Toast';
 
-export default function FileList({ token, activeTab }) {
+export default function FileList({ token, activeTab, refreshKey }) {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -33,6 +33,11 @@ export default function FileList({ token, activeTab }) {
     swarmManager.addListener(handleStateChange);
     return () => swarmManager.removeListener(handleStateChange);
   }, []);
+
+  // Re-fetch when a new file is uploaded
+  useEffect(() => {
+    if (refreshKey > 0) fetchFiles();
+  }, [refreshKey]);
 
   useEffect(() => {
     Object.values(activeDownloads).forEach(dl => {

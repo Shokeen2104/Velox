@@ -12,6 +12,7 @@ function App() {
   const [token, setToken] = useState(localStorage.getItem('swarmshare_token') || null);
   const [activeTab, setActiveTab] = useState('home');
   const [peerCount, setPeerCount] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -40,6 +41,7 @@ function App() {
   const handleFileRegistered = (fileId, fileRef) => {
     console.log(`File registered! DB ID: ${fileId}. Retained file reference for seeding.`);
     swarmManager.startSeeding(fileId, fileRef);
+    setRefreshKey(k => k + 1); // Trigger FileList to re-fetch
   };
 
   return (
@@ -111,12 +113,12 @@ function App() {
                         <SwarmVisualizer />
                       </div>
                       <div>
-                        <FileList token={token} activeTab={activeTab} />
+                        <FileList token={token} activeTab={activeTab} refreshKey={refreshKey} />
                       </div>
                     </div>
                   ) : (
                     <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-                      <FileList token={token} activeTab={activeTab} />
+                      <FileList token={token} activeTab={activeTab} refreshKey={refreshKey} />
                     </div>
                   )}
                 </div>

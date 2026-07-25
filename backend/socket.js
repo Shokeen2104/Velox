@@ -28,25 +28,24 @@ function setupSocketIO(server) {
   io.on('connection', async (socket) => {
     console.log(`User ${socket.userId} connected on socket ${socket.id}`);
 
-    // Mark user as online in Redis (map userId to socketId)
-    // In a real app we might handle multiple tabs/sockets per user, but for now we map 1:1
-    await redisClient.set(`user:socket:${socket.userId}`, socket.id);
+    // Track multiple sockets per user (multiple tabs)
+    await redisClient.sAdd(`user:sockets:${socket.userId}`, socket.id);
     await redisClient.set(`socket:user:${socket.id}`, socket.userId.toString());
 
     // --- WebRTC Signaling Relays ---
-    // The server doesn't understand the content of these messages, it just routes them
-    // to the correct target socket ID.
 
-    // Relay Offer
+    // Relay Offer — send to all of target user's sockets EXCEPT the sender
     socket.on('webrtc-offer', async ({ targetUserId, offer, fileId }) => {
-      const targetSocketId = await redisClient.get(`user:socket:${targetUserId}`);
-      if (targetSocketId) {
-        io.to(targetSocketId).emit('webrtc-offer', {
-          senderUserId: socket.userId,
-          senderSocketId: socket.id,
-          offer,
-          fileId
-        });
+      const targetSocketIds = await redisClient.sMembers(`user:sockets:${targetUserId}`);
+      for (const targetSocketId of targetSocketIds) {
+        if (targetSocketId !== socket.id) {
+          io.to(targetSocketId).emit('webrtc-offer', {
+            senderUserId: socket.userId,
+            senderSocketId: socket.id,
+            offer,
+            fileId
+          });
+        }
       }
     });
 
@@ -63,9 +62,12 @@ function setupSocketIO(server) {
     // Relay ICE Candidate
     socket.on('webrtc-ice-candidate', async ({ targetSocketId, candidate }) => {
       let target = targetSocketId;
-      const mappedSocketId = await redisClient.get(`user:socket:${targetSocketId}`);
-      if (mappedSocketId) {
-        target = mappedSocketId;
+      // Check if targetSocketId is actually a userId
+      const socketIds = await redisClient.sMembers(`user:sockets:${targetSocketId}`);
+      if (socketIds && socketIds.length > 0) {
+        // It's a userId — pick a socket that isn't the sender
+        const otherSocket = socketIds.find(sid => sid !== socket.id);
+        if (otherSocket) target = otherSocket;
       }
       
       io.to(target).emit('webrtc-ice-candidate', {
@@ -80,21 +82,15 @@ function setupSocketIO(server) {
     socket.on('announce-seeding', async ({ fileId }) => {
       console.log(`User ${socket.userId} is announcing seeding for file ${fileId}`);
       await redisClient.sAdd(`file:seeders:${fileId}`, socket.userId.toString());
-      // Broadcast to anyone who might be looking for seeders (optional)
       io.emit('new-seeder', { fileId, userId: socket.userId });
     });
 
     // Disconnect handler
     socket.on('disconnect', async () => {
       console.log(`User ${socket.userId} disconnected`);
-      const userId = await redisClient.get(`socket:user:${socket.id}`);
-      if (userId) {
-        await redisClient.del(`user:socket:${userId}`);
-        await redisClient.del(`socket:user:${socket.id}`);
-        // Note: Removing from file:seeders sets is complex without knowing which files they seeded.
-        // A robust system uses TTLs or scans on disconnect. We'll skip for this prototype, 
-        // as the leecher will just fail to connect to offline peers and try the next one.
-      }
+      // Remove only this socket from the user's set
+      await redisClient.sRem(`user:sockets:${socket.userId}`, socket.id);
+      await redisClient.del(`socket:user:${socket.id}`);
     });
   });
 

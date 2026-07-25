@@ -112,10 +112,17 @@ router.post('/:id/manifest', authenticateToken, async (req, res) => {
     // Get chunk hashes
     const chunksRes = await db.query('SELECT chunk_index, chunk_hash, chunk_size FROM chunk_manifest WHERE file_id = $1 ORDER BY chunk_index ASC', [fileId]);
     
-    // Get online seeders from Redis
-    const seeders = await redisClient.sMembers(`file:seeders:${fileId}`);
-    // A more advanced system would filter these seeders by checking if they are currently online in `peer:online:*`
-    // We will do that when Socket.IO connects them.
+    // Get seeders from Redis
+    const allSeeders = await redisClient.sMembers(`file:seeders:${fileId}`);
+    
+    // Filter for online seeders (check if they have any active sockets)
+    const seeders = [];
+    for (const seederId of allSeeders) {
+      const socketIds = await redisClient.sMembers(`user:sockets:${seederId}`);
+      if (socketIds && socketIds.length > 0) {
+        seeders.push(seederId);
+      }
+    }
 
     res.json({
       file,
