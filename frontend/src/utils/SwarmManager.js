@@ -87,6 +87,14 @@ export class SwarmManager {
     };
 
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    
+    if (pc.pendingCandidates) {
+      for (const candidate of pc.pendingCandidates) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.error(e));
+      }
+      pc.pendingCandidates = [];
+    }
+    
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
@@ -107,14 +115,36 @@ export class SwarmManager {
 
     if (pc) {
       await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      
+      if (pc.pendingCandidates) {
+        for (const candidate of pc.pendingCandidates) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.error(e));
+        }
+        pc.pendingCandidates = [];
+      }
     }
     this.notifyUI();
   }
 
   async handleIceCandidate({ senderSocketId, candidate }) {
-    const pc = this.peers.get(senderSocketId);
+    let pc = this.peers.get(senderSocketId);
+    
+    if (!pc) {
+      const firstKey = Array.from(this.peers.keys())[0];
+      pc = this.peers.get(firstKey);
+      if (pc) {
+        this.peers.delete(firstKey);
+        this.peers.set(senderSocketId, pc);
+      }
+    }
+
     if (pc) {
-      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      if (pc.remoteDescription) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.error(e));
+      } else {
+        pc.pendingCandidates = pc.pendingCandidates || [];
+        pc.pendingCandidates.push(candidate);
+      }
     }
   }
 
@@ -122,6 +152,7 @@ export class SwarmManager {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     });
+    pc.pendingCandidates = [];
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {

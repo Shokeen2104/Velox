@@ -55,6 +55,7 @@ class SignalingManager {
     this.socket.emit('webrtc-ice-candidate', { targetSocketId, candidate });
   }
 
+
   // --- Event Emitter logic for SwarmManager ---
 
   on(event, callback) {

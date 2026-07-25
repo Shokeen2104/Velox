@@ -61,13 +61,20 @@ function setupSocketIO(server) {
     });
 
     // Relay ICE Candidate
-    socket.on('webrtc-ice-candidate', ({ targetSocketId, candidate }) => {
-      io.to(targetSocketId).emit('webrtc-ice-candidate', {
+    socket.on('webrtc-ice-candidate', async ({ targetSocketId, candidate }) => {
+      let target = targetSocketId;
+      const mappedSocketId = await redisClient.get(`user:socket:${targetSocketId}`);
+      if (mappedSocketId) {
+        target = mappedSocketId;
+      }
+      
+      io.to(target).emit('webrtc-ice-candidate', {
         senderUserId: socket.userId,
         senderSocketId: socket.id,
         candidate
       });
     });
+
 
     // Handle intent to seed
     socket.on('announce-seeding', async ({ fileId }) => {
