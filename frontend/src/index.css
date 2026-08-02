@@ -1,12 +1,12 @@
 :root {
-  --primary: #7c3aed;
-  --primary-hover: #6d28d9;
-  --bg-dark: #0f172a;
-  --text-light: #f8fafc;
-  --glass-bg: rgba(30, 41, 59, 0.4);
-  --glass-border: rgba(255, 255, 255, 0.1);
+  --primary: #f43f5e;
+  --primary-hover: #e11d48;
+  --bg-dark: #fff5f0;
+  --text-light: #1e293b;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.5);
   --danger: #ef4444;
-  --success: #22c55e;
+  --success: #10b981;
 }
 
 body {
@@ -14,8 +14,9 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg-dark);
   background-image: 
-    radial-gradient(circle at 15% 50%, rgba(124, 58, 237, 0.04), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.04), transparent 25%);
+    radial-gradient(circle at 15% 50%, rgba(255, 182, 193, 0.5), transparent 35%),
+    radial-gradient(circle at 85% 30%, rgba(253, 224, 71, 0.4), transparent 35%),
+    radial-gradient(circle at 50% 80%, rgba(251, 146, 60, 0.3), transparent 35%);
   color: var(--text-light);
   min-height: 100vh;
   display: flex;
@@ -33,7 +34,7 @@ body {
   border: 1px solid var(--glass-border);
   border-radius: 16px;
   padding: 2rem;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
 }
 
 .btn {
@@ -70,13 +71,13 @@ body {
 
 .input-group label {
   font-size: 0.9rem;
-  color: #cbd5e1;
+  color: #475569;
 }
 
 .input-group input {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(255, 255, 255, 0.8);
   border: 1px solid var(--glass-border);
-  color: white;
+  color: #1e293b;
   padding: 0.75rem 1rem;
   border-radius: 8px;
   font-size: 1rem;
@@ -100,15 +101,16 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 1.5rem 2rem;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
-  background: var(--bg-dark);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
 }
 
 .app-title {
   margin: 0;
   font-size: 1.5rem;
   font-weight: 800;
-  background: linear-gradient(to right, #818cf8, #c084fc);
+  background: linear-gradient(to right, #f43f5e, #f59e0b);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -133,13 +135,13 @@ body {
 }
 
 .file-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .progress-bar-container {
   width: 100%;
   height: 8px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.1);
   border-radius: 4px;
   overflow: hidden;
   margin-top: 1rem;
@@ -164,7 +166,7 @@ body {
 .tab-btn {
   background: transparent;
   border: none;
-  color: #94a3b8;
+  color: #64748b;
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
@@ -174,13 +176,13 @@ body {
 }
 
 .tab-btn:hover {
-  color: #f8fafc;
-  background: rgba(255, 255, 255, 0.05);
+  color: #1e293b;
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .tab-btn.active {
-  color: #f8fafc;
-  background: #1e293b;
+  color: #1e293b;
+  background: rgba(0, 0, 0, 0.1);
   border: none;
 }
 
@@ -189,13 +191,13 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.05);
   padding: 0.4rem 1rem;
   border-radius: 9999px;
   font-family: monospace;
   font-size: 0.85rem;
-  color: #94a3b8;
+  color: #475569;
 }
 
 .glowing-dot {
@@ -244,13 +246,13 @@ body {
 }
 
 .toast {
-  background: rgba(15, 23, 42, 0.95);
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
   border: 1px solid var(--glass-border);
-  color: #f8fafc;
+  color: #1e293b;
   padding: 1rem 1.5rem;
   border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
   animation: slideIn 0.3s ease-out forwards;
   min-width: 250px;
 }
