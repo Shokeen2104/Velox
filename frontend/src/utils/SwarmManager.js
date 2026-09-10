@@ -90,7 +90,10 @@ export class SwarmManager {
       manifest: chunksManifest,
       receivedChunks: new Map(),
       status: 'connecting',
-      progress: 0
+      progress: 0,
+      bytesReceived: 0,
+      speed: 0,
+      startTime: Date.now()
     });
     this.notifyUI();
 
@@ -128,7 +131,7 @@ export class SwarmManager {
     this.notifyUI();
   }
 
-  async handleOffer({ senderUserId, senderSocketId, offer, fileId }) {
+  async handleOffer({ _senderUserId, senderSocketId, offer, fileId }) {
     console.log(`Received offer from ${senderSocketId}`);
     const pc = this.createPeerConnection(senderSocketId);
 
@@ -200,7 +203,11 @@ export class SwarmManager {
 
   createPeerConnection(peerId) {
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ]
     });
     pc.pendingCandidates = [];
 
@@ -292,6 +299,10 @@ export class SwarmManager {
     if (manifestChunk && manifestChunk.chunk_hash === hashHex) {
       console.log(`Chunk ${chunkIndex} verified.`);
       download.receivedChunks.set(chunkIndex, new Blob([arrayBuffer]));
+      download.bytesReceived = (download.bytesReceived || 0) + arrayBuffer.byteLength;
+
+      const elapsed = Math.max((Date.now() - (download.startTime || Date.now())) / 1000, 0.1);
+      download.speed = Math.round(download.bytesReceived / elapsed);
       
       download.progress = (download.receivedChunks.size / download.manifest.length) * 100;
       this.notifyUI();
@@ -301,6 +312,7 @@ export class SwarmManager {
         this.requestChunk(channel, fileId, chunkIndex + 1);
       } else {
         download.status = 'complete';
+        download.speed = 0;
         this.notifyUI();
         this.assembleAndDownload(download);
       }

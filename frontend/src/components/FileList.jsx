@@ -14,8 +14,22 @@ export default function FileList({ token, activeTab, refreshKey }) {
 
   const parseJwt = (t) => {
     try { return JSON.parse(atob(t.split('.')[1])); }
-    catch (e) { return null; }
+    catch { return null; }
   };
+
+  const formatBytes = (bytes) => {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  };
+
+  const formatSpeed = (bytesPerSec) => {
+    if (!bytesPerSec || bytesPerSec <= 0) return '';
+    return `${formatBytes(bytesPerSec)}/s`;
+  };
+
   const currentUserEmail = parseJwt(token)?.email;
   const addToast = useToast();
   const [activeDownloads, setActiveDownloads] = useState({});
@@ -188,8 +202,13 @@ export default function FileList({ token, activeTab, refreshKey }) {
                   <div>
                     <strong style={{ fontSize: '1.1rem' }}>{!file.is_public && '🔒 '} {file.file_name}</strong>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#94a3b8', marginTop: '0.4rem', fontFamily: 'monospace' }}>
-                      <span className="seeder-badge">1</span>
-                      {(file.total_size / (1024 * 1024)).toFixed(2)} MB &bull; seeded by {file.owner}
+                      <span className="seeder-badge" title="Active Seeders">{file.seeder_count || 1}</span>
+                      {formatBytes(file.total_size)} &bull; seeded by {file.owner}
+                      {isDownloading && dlState?.speed > 0 && (
+                        <span style={{ color: 'var(--primary)', marginLeft: '0.25rem' }}>
+                          &bull; {formatSpeed(dlState.speed)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
