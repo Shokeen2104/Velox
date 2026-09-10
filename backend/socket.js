@@ -5,9 +5,13 @@ const redisClient = require('./db/redis');
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
 
 function setupSocketIO(server) {
+  const allowedOrigins = process.env.FRONTEND_URL 
+    ? [process.env.FRONTEND_URL, 'http://localhost:5173'] 
+    : ['http://localhost:5173'];
+
   const io = new Server(server, {
     cors: {
-      origin: process.env.FRONTEND_URL || "http://localhost:5173",
+      origin: allowedOrigins,
       methods: ["GET", "POST"]
     }
   });

@@ -24,26 +24,19 @@ router.post('/register', authenticateToken, async (req, res) => {
     passwordHash = await bcrypt.hash(password, 10);
   }
 
-  const client = await db.query('SELECT NOW()'); // Just to test, we will use transactions soon
-  
-  // Begin transaction
-  const pool = require('pg').Pool; // Or import pool from postgres.js if exported
-  // Wait, db.query is a function that uses the pool. Let's use it for a simple query without tx for now or better get a client from pool.
-  // I will refactor db/postgres.js later if needed, but we can do it in separate queries.
-  // Actually, to avoid issues, we should probably do a transaction.
-  // Let's modify postgres.js later, for now we will just run the queries sequentially.
-  
+  const client = await db.getClient();
+
   try {
+    await client.query('BEGIN');
+
     // 1. Insert file record
-    const fileResult = await db.query(
+    const fileResult = await client.query(
       'INSERT INTO files (owner_id, file_name, total_size, chunk_size, total_chunks, is_public, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
       [userId, fileName, totalSize, chunkSize, totalChunks, isPublic !== false, passwordHash]
     );
     const fileId = fileResult.rows[0].id;
 
-    // 2. Insert chunk hashes
-    // We could use bulk insert, but for simplicity in v1 we can iterate or use a simple query
-    // Let's build a bulk insert query
+    // 2. Insert chunk hashes in bulk
     let values = [];
     let placeholders = [];
     let index = 1;
@@ -54,21 +47,24 @@ router.post('/register', authenticateToken, async (req, res) => {
     });
 
     const queryText = `INSERT INTO chunk_manifest (file_id, chunk_index, chunk_hash, chunk_size) VALUES ${placeholders.join(', ')}`;
-    await db.query(queryText, values);
+    await client.query(queryText, values);
+
+    await client.query('COMMIT');
 
     // 3. Mark uploader as an available seeder for this file in Redis
-    // We will use a set 'file:seeders:{fileId}' and add the userId to it for now
-    // (In later phases, we will add the socketId when they connect, but this sets initial intent)
-    await redisClient.sAdd(`file:seeders:${fileId}`, userId.toString());
-    
-    // Also mark which chunks this peer has in Redis (all of them since they are the original seeder)
-    // For large files, maybe just a simple flag "has_all" or add all indices
-    // Here we'll just record presence for now. We can assume the registered seeder has all chunks.
+    try {
+      await redisClient.sAdd(`file:seeders:${fileId}`, userId.toString());
+    } catch (redisErr) {
+      console.warn('Could not record initial seeder in Redis:', redisErr.message);
+    }
 
     res.status(201).json({ message: 'File registered successfully', fileId });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('File registration error:', error);
     res.status(500).json({ error: 'Failed to register file' });
+  } finally {
+    client.release();
   }
 });
 
@@ -78,7 +74,32 @@ router.get('/', authenticateToken, async (req, res) => {
     const result = await db.query(
       'SELECT f.id, f.file_name, f.total_size, f.created_at, f.is_public, u.email as owner FROM files f JOIN users u ON f.owner_id = u.id ORDER BY f.created_at DESC'
     );
-    res.json(result.rows);
+
+    // Enrich files with live active seeder count from Redis
+    const filesWithSeeders = await Promise.all(
+      result.rows.map(async (file) => {
+        try {
+          const seederIds = await redisClient.sMembers(`file:seeders:${file.id}`);
+          let activeCount = 0;
+          if (seederIds && seederIds.length > 0) {
+            for (const seederId of seederIds) {
+              const sockets = await redisClient.sMembers(`user:sockets:${seederId}`);
+              if (sockets && sockets.length > 0) {
+                activeCount++;
+              }
+            }
+          }
+          return {
+            ...file,
+            seeder_count: Math.max(activeCount, seederIds ? seederIds.length : 1)
+          };
+        } catch {
+          return { ...file, seeder_count: 1 };
+        }
+      })
+    );
+
+    res.json(filesWithSeeders);
   } catch (error) {
     console.error('Error fetching files:', error);
     res.status(500).json({ error: 'Failed to fetch files' });
