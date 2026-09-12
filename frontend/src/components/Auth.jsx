@@ -27,6 +27,7 @@ export default function Auth({ setToken }) {
       }
 
       setToken(data.token);
+      localStorage.setItem('velox_token', data.token);
       localStorage.setItem('swarmshare_token', data.token);
       navigate('/files');
     } catch (err) {
@@ -42,7 +43,7 @@ export default function Auth({ setToken }) {
     <div className="container" style={{ maxWidth: '400px', marginTop: '10vh' }}>
       <div className="glass-panel">
         <h2 style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          {isLogin ? 'Welcome Back' : 'Join SwarmShare'}
+          {isLogin ? 'Welcome Back' : 'Join VELOX'}
         </h2>
         
         {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem', textAlign: 'center' }}>{error}</div>}

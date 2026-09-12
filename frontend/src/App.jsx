@@ -9,7 +9,9 @@ import { signalingManager } from './utils/SignalingManager';
 import { swarmManager } from './utils/SwarmManager';
 
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('swarmshare_token') || null);
+  const [token, setToken] = useState(
+    localStorage.getItem('velox_token') || localStorage.getItem('swarmshare_token') || null
+  );
   const [activeTab, setActiveTab] = useState('home');
   const [peerCount, setPeerCount] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -34,6 +36,7 @@ function App() {
 
   const handleLogout = () => {
     setToken(null);
+    localStorage.removeItem('velox_token');
     localStorage.removeItem('swarmshare_token');
     navigate('/login');
   };
