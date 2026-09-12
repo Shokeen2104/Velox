@@ -9,9 +9,19 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
 // Signup endpoint
 router.post('/signup', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    let { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    email = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
     }
 
     // Check if user exists
@@ -43,10 +53,12 @@ router.post('/signup', async (req, res) => {
 // Login endpoint
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    let { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
+
+    email = email.trim().toLowerCase();
 
     // Fetch user
     const result = await db.query('SELECT id, email, password_hash FROM users WHERE email = $1', [email]);
