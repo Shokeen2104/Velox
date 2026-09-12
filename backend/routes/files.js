@@ -145,6 +145,9 @@ router.post('/:id/manifest', authenticateToken, async (req, res) => {
       }
     }
 
+    // Remove sensitive password hash before sending to client
+    delete file.password_hash;
+
     res.json({
       file,
       chunks: chunksRes.rows,
