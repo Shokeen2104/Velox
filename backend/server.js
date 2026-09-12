@@ -33,9 +33,19 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/files', filesRoutes);
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({ name: 'VELOX Signaling API', version: '1.0.0', status: 'online' });
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
+});
+
+// Catch-all 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
 });
 
 server.listen(port, () => {
