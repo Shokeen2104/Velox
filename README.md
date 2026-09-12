@@ -153,11 +153,40 @@ The frontend will run on `http://localhost:5173`.
 
 ---
 
+## 📡 API Endpoints Reference
+
+| Method | Endpoint | Auth Required | Description |
+|---|---|:---:|---|
+| `GET` | `/` | No | API status and version check |
+| `GET` | `/health` | No | Health check endpoint for uptime monitors |
+| `POST` | `/api/auth/signup` | No | Create a new user account with validated credentials |
+| `POST` | `/api/auth/login` | No | Authenticate user and receive a 7-day JWT token |
+| `GET` | `/api/files` | Yes | List all registered files enriched with active seeder counts |
+| `POST` | `/api/files/register` | Yes | Register a file chunk manifest and start seeding |
+| `POST` | `/api/files/:id/manifest` | Yes | Retrieve chunk hashes and active seeders (requires password if private) |
+| `DELETE` | `/api/files/:id` | Yes | Delete an owned file and purge active seeder state |
+
+---
+
+## 🔧 Troubleshooting & Tips
+
+- **Database Connection Issues**:
+  - Verify Docker is running: `docker ps`.
+  - The PostgreSQL port is mapped to host `5434` to avoid collision with standard system Postgres instances on `5432`.
+- **Redis Connection**:
+  - Redis runs on standard port `6379`. If connecting from a custom environment, set `REDIS_URL` in `backend/.env`.
+- **WebRTC Peer Connectivity across Networks**:
+  - For cross-network transfers behind asymmetric NATs, ensure Google STUN servers (`stun:stun.l.google.com:19302`) configured in `SwarmManager.js` are reachable.
+- **Multiple Browser Tabs**:
+  - You can test peer-to-peer sharing locally by opening two separate browser windows (or one incognito window) with different accounts.
+
+---
+
 ## 🔒 Security & Verification
 
 - **Integrity Guarantee**: Chunks are verified against cryptographic SHA-256 digests prior to saving, preventing corrupt or tampered payloads.
 - **Authentication**: REST routes and Socket.IO signaling handshakes are secured with JWT bearer tokens.
-- **Private Manifests**: Access to private file manifests requires password verification via bcrypt.
+- **Private Manifests**: Access to private file manifests requires password verification via bcrypt. Password hashes are never leaked in manifest responses.
 
 ---
 
