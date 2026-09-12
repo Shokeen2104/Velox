@@ -176,6 +176,8 @@ export default function FileList({ token, activeTab, refreshKey }) {
         placeholder="Search files by name..."
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
+        aria-label="Search files by name"
+        autoComplete="off"
         className="input-group"
         style={{ width: '100%', marginBottom: '1.5rem', padding: '0.5rem' }}
       />
@@ -261,17 +263,23 @@ export default function FileList({ token, activeTab, refreshKey }) {
             <h3>Private File</h3>
             <p style={{ marginBottom: '1rem' }}>Please enter the password to download <strong>{passwordPromptFile.file_name}</strong>.</p>
             {downloadError && <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{downloadError}</div>}
-            <input
-              type="password"
-              placeholder="Password"
-              value={downloadPassword}
-              onChange={e => setDownloadPassword(e.target.value)}
-              style={{ width: '100%', padding: '0.5rem', marginBottom: '1rem' }}
-            />
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <button className="btn" onClick={() => setPasswordPromptFile(null)} style={{ background: 'transparent', border: '1px solid var(--glass-border)' }}>Cancel</button>
-              <button className="btn" onClick={() => handleDownload(passwordPromptFile.id, downloadPassword)} style={{ flex: 1 }}>Confirm Download</button>
-            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              handleDownload(passwordPromptFile.id, downloadPassword);
+            }}>
+              <input
+                type="password"
+                placeholder="Password"
+                autoFocus
+                value={downloadPassword}
+                onChange={e => setDownloadPassword(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem', marginBottom: '1rem' }}
+              />
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button type="button" className="btn" onClick={() => setPasswordPromptFile(null)} style={{ background: 'transparent', border: '1px solid var(--glass-border)' }}>Cancel</button>
+                <button type="submit" className="btn" style={{ flex: 1 }}>Confirm Download</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
