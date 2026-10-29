@@ -95,6 +95,10 @@ export default function FileList({ token, activeTab, refreshKey }) {
   };
 
   const handleDownloadClick = (file) => {
+    if (!file.is_available && (!file.seeder_count || file.seeder_count === 0)) {
+      addToast(`Cannot download "${file.file_name}": The uploader is currently offline. They must have VELOX open to transfer.`, 'error');
+      return;
+    }
     if (!file.is_public) {
       setPasswordPromptFile(file);
       setDownloadPassword('');
@@ -102,6 +106,11 @@ export default function FileList({ token, activeTab, refreshKey }) {
     } else {
       handleDownload(file.id, null);
     }
+  };
+
+  const handleRetry = (file) => {
+    swarmManager.resetDownload(file.id);
+    handleDownloadClick(file);
   };
 
   const handleDownload = async (fileId, pwd) => {
@@ -163,20 +172,16 @@ export default function FileList({ token, activeTab, refreshKey }) {
 
   const filteredFiles = files.filter(file => {
     const matchesSearch = file.file_name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesTab = activeTab === 'uploads' ? file.owner === currentUserEmail : 
-                       activeTab === 'downloads' ? file.owner !== currentUserEmail : 
-                       true; // 'home' matches all
+    const matchesTab = activeTab === 'uploads' ? file.owner === currentUserEmail : true;
     return matchesSearch && matchesTab;
   });
 
   return (
     <div className="glass-panel" style={{ marginTop: '2rem' }}>
       <p style={{ color: '#94a3b8', fontSize: '1rem', marginBottom: '1.5rem' }}>
-        {activeTab === 'downloads' 
-          ? 'Browse and download files shared by others.' 
-          : activeTab === 'uploads'
-          ? 'Manage the files you have uploaded to the network.'
-          : 'All files currently available on the network.'}
+        {activeTab === 'uploads'
+          ? 'Manage the files you have shared to the network.'
+          : 'All files registered for direct peer-to-peer transfer.'}
       </p>
 
       <input
@@ -196,10 +201,13 @@ export default function FileList({ token, activeTab, refreshKey }) {
         <ul className="file-list">
           {filteredFiles.map(file => {
             const dlState = activeDownloads[file.id];
-            const isDownloading = dlState && dlState.status !== 'complete';
+            const isFailed = dlState && dlState.status && dlState.status.startsWith('failed');
             const isComplete = dlState && dlState.status === 'complete';
+            const isConnecting = dlState && dlState.status === 'connecting';
+            const isDownloading = dlState && dlState.status === 'downloading';
             const progress = dlState ? dlState.progress || 0 : 0;
             const typeProps = getFileTypeProps(file.file_name);
+            const isPeerOnline = file.seeder_count > 0 || file.is_available;
 
             return (
               <li key={file.id} className="file-item" style={{ alignItems: 'center' }}>
@@ -216,17 +224,22 @@ export default function FileList({ token, activeTab, refreshKey }) {
                         className="seeder-badge" 
                         title="Peer Status" 
                         style={{ 
-                          background: (file.seeder_count > 0 || file.is_available) ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                          color: (file.seeder_count > 0 || file.is_available) ? '#10b981' : '#ef4444',
-                          border: `1px solid ${(file.seeder_count > 0 || file.is_available) ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                          background: isPeerOnline ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                          color: isPeerOnline ? '#10b981' : '#ef4444',
+                          border: `1px solid ${isPeerOnline ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
                         }}
                       >
-                        {(file.seeder_count > 0 || file.is_available) ? '● Peer Online' : '○ Peer Offline'}
+                        {isPeerOnline ? '● Peer Online' : '○ Peer Offline'}
                       </span>
                       {formatBytes(file.total_size)} &bull; shared by {file.owner}
                       {isDownloading && dlState?.speed > 0 && (
                         <span style={{ color: 'var(--primary)', marginLeft: '0.25rem' }}>
                           &bull; {formatSpeed(dlState.speed)}
+                        </span>
+                      )}
+                      {isFailed && (
+                        <span style={{ color: '#ef4444', marginLeft: '0.25rem' }}>
+                          &bull; {dlState.status}
                         </span>
                       )}
                     </div>
@@ -239,30 +252,77 @@ export default function FileList({ token, activeTab, refreshKey }) {
                     </button>
                   )}
                   
-                  {isDownloading || isComplete ? (
+                  {isFailed ? (
                     <button 
                       className="btn" 
-                      disabled={isComplete}
+                      onClick={() => handleRetry(file)}
+                      style={{ 
+                        background: 'rgba(239, 68, 68, 0.15)', 
+                        border: '1px solid #ef4444', 
+                        color: '#ef4444',
+                        width: '120px', padding: '0.65rem 0.5rem', borderRadius: '8px',
+                        fontSize: '0.85rem', fontWeight: 600
+                      }}
+                      title={dlState.status}
+                    >
+                      Failed ↻
+                    </button>
+                  ) : isComplete ? (
+                    <button 
+                      className="btn" 
+                      disabled
+                      style={{ 
+                        background: 'var(--success)', 
+                        border: 'none', 
+                        width: '120px', padding: '0.65rem 1rem', borderRadius: '8px'
+                      }}
+                    >
+                      Complete!
+                    </button>
+                  ) : isConnecting ? (
+                    <button 
+                      className="btn" 
+                      disabled
+                      style={{ 
+                        background: 'rgba(245, 158, 11, 0.15)', 
+                        border: '1px solid #f59e0b', 
+                        color: '#f59e0b',
+                        width: '120px', padding: '0.65rem 0.5rem', borderRadius: '8px',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      Connecting...
+                    </button>
+                  ) : isDownloading ? (
+                    <button 
+                      className="btn" 
+                      disabled
                       style={{ 
                         position: 'relative', overflow: 'hidden', 
-                        background: isComplete ? 'var(--success)' : 'rgba(255,255,255,0.1)',
-                        border: isComplete ? 'none' : '1px solid var(--primary)',
+                        background: 'rgba(255,255,255,0.1)',
+                        border: '1px solid var(--primary)',
                         width: '120px', padding: '0.75rem 1.5rem', borderRadius: '8px'
                       }}
                     >
-                      {!isComplete && (
-                        <div style={{ 
-                          position: 'absolute', top: 0, left: 0, bottom: 0, 
-                          background: 'var(--primary)', width: `${progress}%`, transition: 'width 0.2s', zIndex: 0 
-                        }} />
-                      )}
+                      <div style={{ 
+                        position: 'absolute', top: 0, left: 0, bottom: 0, 
+                        background: 'var(--primary)', width: `${progress}%`, transition: 'width 0.2s', zIndex: 0 
+                      }} />
                       <span style={{ position: 'relative', zIndex: 1, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
-                        {isComplete ? 'Complete!' : `${Math.round(progress)}%`}
+                        {`${Math.round(progress)}%`}
                       </span>
                     </button>
                   ) : (
-                    <button className="btn" onClick={() => handleDownloadClick(file)}>
-                      Download
+                    <button 
+                      className="btn" 
+                      onClick={() => handleDownloadClick(file)}
+                      style={{
+                        opacity: isPeerOnline ? 1 : 0.6,
+                        cursor: isPeerOnline ? 'pointer' : 'not-allowed'
+                      }}
+                      title={isPeerOnline ? 'Download file via WebRTC' : 'Uploader is offline'}
+                    >
+                      {isPeerOnline ? 'Download' : 'Peer Offline'}
                     </button>
                   )}
                 </div>

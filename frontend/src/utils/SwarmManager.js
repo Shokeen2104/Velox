@@ -5,6 +5,7 @@ import { signalingManager } from './SignalingManager';
  * 
  * Manages direct browser-to-browser WebRTC DataChannel connections,
  * sequential chunk streaming, and on-the-fly SHA-256 integrity verification.
+ * Includes connection heartbeat, stall detection, and clear failure reporting.
  */
 export class SwarmManager {
   constructor() {
@@ -12,6 +13,7 @@ export class SwarmManager {
     this.dataChannels = new Map();    // peerId -> RTCDataChannel
     this.seededFiles = new Map();     // fileId -> File / Blob (held locally by sender)
     this.activeDownloads = new Map(); // fileId -> downloadState
+    this.chunkTimeouts = new Map();   // fileId -> setTimeout id for stall detection
     this.listeners = [];
 
     // Clear any stale listeners from previous HMR instances
@@ -54,11 +56,32 @@ export class SwarmManager {
     this.notifyUI();
   }
 
+  // Reset or cancel a failed download so user can retry
+  resetDownload(fileId) {
+    const fileIdStr = fileId.toString();
+    this.clearChunkTimeout(fileIdStr);
+    this.activeDownloads.delete(fileIdStr);
+
+    // Close any open DataChannel and PeerConnection for this transfer
+    for (const [peerId, dc] of this.dataChannels.entries()) {
+      try { dc.close(); } catch {}
+      this.dataChannels.delete(peerId);
+    }
+    for (const [peerId, pc] of this.peers.entries()) {
+      try { pc.close(); } catch {}
+      this.peers.delete(peerId);
+    }
+
+    this.notifyUI();
+  }
+
   // Receiver initiates a 1-to-1 P2P download
   async startDownload(file, chunksManifest, seeders) {
     const fileIdStr = file.id.toString();
 
-    if (this.activeDownloads.has(fileIdStr)) {
+    // If already downloading or completed, don't restart unless reset
+    const existing = this.activeDownloads.get(fileIdStr);
+    if (existing && existing.status !== 'complete' && !existing.status.startsWith('failed')) {
       console.log(`[P2P] Download already active for ${fileIdStr}, skipping.`);
       return;
     }
@@ -99,31 +122,41 @@ export class SwarmManager {
     });
     this.notifyUI();
 
-    // 1-to-1 transfer: connect directly to the primary online sender
-    if (seeders && seeders.length > 0) {
-      const targetSenderId = seeders[0];
-      console.log(`[P2P] Connecting to sender: ${targetSenderId}`);
-      this.connectToPeer(targetSenderId, file.id);
-
-      // Timeout safety: 12 seconds connection timeout
-      setTimeout(() => {
-        const dl = this.activeDownloads.get(fileIdStr);
-        if (dl && dl.status === 'connecting') {
-          console.error(`[P2P] Connection timeout for file ${fileIdStr}`);
-          dl.status = 'failed (sender unreachable - sender must be online)';
-          this.notifyUI();
-        }
-      }, 12000);
-    } else {
+    // 1-to-1 transfer: check if sender is available
+    if (!seeders || seeders.length === 0) {
       console.error('[P2P] No sender currently online for file', file.id);
-      this.activeDownloads.get(fileIdStr).status = 'failed (sender is offline)';
+      this.markFailed(fileIdStr, 'Uploader is offline');
+      return;
+    }
+
+    const targetSenderId = seeders[0];
+    console.log(`[P2P] Connecting to sender: ${targetSenderId}`);
+    this.connectToPeer(targetSenderId, file.id);
+
+    // Timeout safety: 10 seconds to establish P2P connection
+    setTimeout(() => {
+      const dl = this.activeDownloads.get(fileIdStr);
+      if (dl && dl.status === 'connecting') {
+        console.error(`[P2P] Connection timeout for file ${fileIdStr}`);
+        this.markFailed(fileIdStr, 'Sender unreachable (timeout)');
+      }
+    }, 10000);
+  }
+
+  markFailed(fileId, reason) {
+    const fileIdStr = fileId.toString();
+    this.clearChunkTimeout(fileIdStr);
+    const dl = this.activeDownloads.get(fileIdStr);
+    if (dl && dl.status !== 'complete') {
+      dl.status = `failed (${reason})`;
+      dl.speed = 0;
       this.notifyUI();
     }
   }
 
   // Create WebRTC Offer and send via Socket.IO signaling
   async connectToPeer(targetUserId, fileId) {
-    const pc = this.createPeerConnection(targetUserId);
+    const pc = this.createPeerConnection(targetUserId, fileId);
     const dc = pc.createDataChannel(`transfer-${fileId}`);
     this.setupDataChannel(dc, targetUserId, fileId);
 
@@ -137,7 +170,7 @@ export class SwarmManager {
   // Handle incoming Offer from receiver (Sender side)
   async handleOffer({ _senderUserId, senderSocketId, offer, fileId }) {
     console.log(`[P2P] Received offer from ${senderSocketId}`);
-    const pc = this.createPeerConnection(senderSocketId);
+    const pc = this.createPeerConnection(senderSocketId, fileId);
 
     pc.ondatachannel = (event) => {
       this.setupDataChannel(event.channel, senderSocketId, fileId);
@@ -207,7 +240,7 @@ export class SwarmManager {
     }
   }
 
-  createPeerConnection(peerId) {
+  createPeerConnection(peerId, fileId) {
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -223,8 +256,20 @@ export class SwarmManager {
       }
     };
 
+    // Monitor connection drops & disconnects
     pc.onconnectionstatechange = () => {
       console.log(`[P2P] Connection state with ${peerId}: ${pc.connectionState}`);
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        if (fileId) {
+          this.markFailed(fileId, 'Peer disconnected');
+        } else {
+          for (const [fId, dl] of this.activeDownloads.entries()) {
+            if (dl.status !== 'complete') {
+              this.markFailed(fId, 'Peer disconnected');
+            }
+          }
+        }
+      }
       this.notifyUI();
     };
 
@@ -246,6 +291,17 @@ export class SwarmManager {
       }
     };
 
+    // Detect channel close / peer drop
+    channel.onclose = () => {
+      console.warn(`[P2P] DataChannel closed with ${peerId}`);
+      this.markFailed(fileId, 'Peer closed connection');
+    };
+
+    channel.onerror = (err) => {
+      console.error(`[P2P] DataChannel error:`, err);
+      this.markFailed(fileId, 'Channel error');
+    };
+
     channel.onmessage = async (event) => {
       if (typeof event.data === 'string') {
         const msg = JSON.parse(event.data);
@@ -255,11 +311,7 @@ export class SwarmManager {
           this.lastIncomingHeader = msg;
         } else if (msg.type === 'error') {
           console.error(`[P2P] Peer error: ${msg.message}`);
-          const download = this.activeDownloads.get(fileId.toString());
-          if (download) {
-            download.status = `failed (${msg.message})`;
-            this.notifyUI();
-          }
+          this.markFailed(fileId, msg.message);
         }
       } else {
         // Binary payload: received chunk ArrayBuffer
@@ -276,8 +328,26 @@ export class SwarmManager {
     };
   }
 
-  // Request a specific chunk index sequentially
+  clearChunkTimeout(fileId) {
+    const fId = fileId.toString();
+    if (this.chunkTimeouts.has(fId)) {
+      clearTimeout(this.chunkTimeouts.get(fId));
+      this.chunkTimeouts.delete(fId);
+    }
+  }
+
+  // Request a specific chunk index sequentially with stall timeout
   requestChunk(channel, fileId, chunkIndex) {
+    const fId = fileId.toString();
+    this.clearChunkTimeout(fId);
+
+    // If sender drops without closing WebRTC cleanly, detect stall within 8 seconds
+    const timeout = setTimeout(() => {
+      console.warn(`[P2P] Chunk ${chunkIndex} request timed out for file ${fileId}`);
+      this.markFailed(fileId, 'Transfer stalled (peer may have left)');
+    }, 8000);
+    this.chunkTimeouts.set(fId, timeout);
+
     channel.send(JSON.stringify({ type: 'request_chunk', fileId, chunkIndex }));
   }
 
@@ -302,6 +372,8 @@ export class SwarmManager {
   // Receiver verifies the SHA-256 hash of the received chunk
   async handleChunkReceived(arrayBuffer, fileId, chunkIndex, channel) {
     const fileIdStr = fileId.toString();
+    this.clearChunkTimeout(fileIdStr);
+
     const download = this.activeDownloads.get(fileIdStr);
     if (!download) return;
 
@@ -327,12 +399,13 @@ export class SwarmManager {
       } else {
         download.status = 'complete';
         download.speed = 0;
+        this.clearChunkTimeout(fileIdStr);
         this.notifyUI();
         this.assembleAndDownload(download);
       }
     } else {
       console.error(`[P2P] Chunk ${chunkIndex} SHA-256 hash mismatch! Discarding corrupt chunk.`);
-      // Retry the current chunk once
+      // Retry chunk once
       this.requestChunk(channel, fileId, chunkIndex);
     }
   }

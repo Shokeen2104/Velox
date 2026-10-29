@@ -61,13 +61,7 @@ function App() {
                 className={`tab-btn ${activeTab === 'home' ? 'active' : ''}`}
                 onClick={() => setActiveTab('home')}
               >
-                Home
-              </button>
-              <button 
-                className={`tab-btn ${activeTab === 'downloads' ? 'active' : ''}`}
-                onClick={() => setActiveTab('downloads')}
-              >
-                My Downloads
+                All Files
               </button>
               <button 
                 className={`tab-btn ${activeTab === 'uploads' ? 'active' : ''}`}
