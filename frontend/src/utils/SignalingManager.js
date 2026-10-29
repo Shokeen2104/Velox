@@ -21,6 +21,16 @@ class SignalingManager {
       console.log('Disconnected from signaling server');
     });
 
+    this.socket.on('connect_error', (err) => {
+      console.warn('Signaling connection error:', err.message);
+      if (err.message === 'Authentication error') {
+        localStorage.removeItem('velox_token');
+        localStorage.removeItem('swarmshare_token');
+        this.disconnect();
+        window.location.href = '/login';
+      }
+    });
+
     // Relay WebRTC messages to registered listeners (usually SwarmManager)
     this.socket.on('webrtc-offer', (data) => this._emit('offer', data));
     this.socket.on('webrtc-answer', (data) => this._emit('answer', data));

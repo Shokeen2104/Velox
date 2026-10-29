@@ -76,7 +76,15 @@ export default function FileList({ token, activeTab, refreshKey }) {
       const res = await fetch(`${API_URL}/api/files`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (!res.ok) throw new Error('Failed to fetch files');
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem('velox_token');
+          localStorage.removeItem('swarmshare_token');
+          window.location.href = '/login';
+          return;
+        }
+        throw new Error('Failed to fetch files');
+      }
       const data = await res.json();
       setFiles(data);
     } catch (err) {

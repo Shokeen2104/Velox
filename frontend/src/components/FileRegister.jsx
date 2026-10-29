@@ -49,6 +49,12 @@ export default function FileRegister({ token, onFileRegistered }) {
       const data = await res.json();
       
       if (!res.ok) {
+        if (res.status === 401 || (res.status === 403 && data.error === 'Invalid or expired token')) {
+          localStorage.removeItem('velox_token');
+          localStorage.removeItem('swarmshare_token');
+          window.location.href = '/login';
+          return;
+        }
         throw new Error(data.error || 'Failed to register file');
       }
 
