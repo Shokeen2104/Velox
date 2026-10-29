@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const db = require('../db/postgres');
-const redisClient = require('../db/redis');
+const peerStore = require('../db/peerStore');
 const { authenticateToken } = require('../middleware/auth');
 const router = express.Router();
 
@@ -51,12 +51,8 @@ router.post('/register', authenticateToken, async (req, res) => {
 
     await client.query('COMMIT');
 
-    // 3. Mark uploader as an available seeder for this file in Redis
-    try {
-      await redisClient.sAdd(`file:seeders:${fileId}`, userId.toString());
-    } catch (redisErr) {
-      console.warn('Could not record initial seeder in Redis:', redisErr.message);
-    }
+    // 3. Register uploader as an active seeder in memory
+    peerStore.addSeeder(fileId, userId);
 
     res.status(201).json({ message: 'File registered successfully', fileId });
   } catch (error) {
@@ -72,41 +68,30 @@ router.post('/register', authenticateToken, async (req, res) => {
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT f.id, f.file_name, f.total_size, f.created_at, f.is_public, u.email as owner FROM files f JOIN users u ON f.owner_id = u.id ORDER BY f.created_at DESC'
+      'SELECT f.id, f.file_name, f.total_size, f.created_at, f.is_public, f.owner_id, u.email as owner FROM files f JOIN users u ON f.owner_id = u.id ORDER BY f.created_at DESC'
     );
 
-    // Enrich files with live active seeder count from Redis
-    const filesWithSeeders = await Promise.all(
-      result.rows.map(async (file) => {
-        try {
-          const seederIds = await redisClient.sMembers(`file:seeders:${file.id}`);
-          let activeCount = 0;
-          if (seederIds && seederIds.length > 0) {
-            for (const seederId of seederIds) {
-              const sockets = await redisClient.sMembers(`user:sockets:${seederId}`);
-              if (sockets && sockets.length > 0) {
-                activeCount++;
-              }
-            }
-          }
-          return {
-            ...file,
-            seeder_count: Math.max(activeCount, seederIds ? seederIds.length : 1)
-          };
-        } catch {
-          return { ...file, seeder_count: 1 };
-        }
-      })
-    );
+    // Enrich files with in-memory peer availability
+    const filesWithStatus = result.rows.map((file) => {
+      const onlineSeeders = peerStore.getOnlineSeeders(file.id);
+      const isOwnerOnline = peerStore.isUserOnline(file.owner_id);
+      const isAvailable = onlineSeeders.length > 0 || isOwnerOnline;
 
-    res.json(filesWithSeeders);
+      return {
+        ...file,
+        is_available: isAvailable,
+        seeder_count: onlineSeeders.length > 0 ? onlineSeeders.length : (isOwnerOnline ? 1 : 0)
+      };
+    });
+
+    res.json(filesWithStatus);
   } catch (error) {
     console.error('Error fetching files:', error);
     res.status(500).json({ error: 'Failed to fetch files' });
   }
 });
 
-// Endpoint to get a file manifest and online seeders
+// Endpoint to get a file manifest and available peer
 router.post('/:id/manifest', authenticateToken, async (req, res) => {
   try {
     const fileId = req.params.id;
@@ -131,18 +116,17 @@ router.post('/:id/manifest', authenticateToken, async (req, res) => {
     }
 
     // Get chunk hashes
-    const chunksRes = await db.query('SELECT chunk_index, chunk_hash, chunk_size FROM chunk_manifest WHERE file_id = $1 ORDER BY chunk_index ASC', [fileId]);
+    const chunksRes = await db.query(
+      'SELECT chunk_index, chunk_hash, chunk_size FROM chunk_manifest WHERE file_id = $1 ORDER BY chunk_index ASC',
+      [fileId]
+    );
     
-    // Get seeders from Redis
-    const allSeeders = await redisClient.sMembers(`file:seeders:${fileId}`);
+    // Get online seeders for 1-to-1 transfer
+    let seeders = peerStore.getOnlineSeeders(fileId);
     
-    // Filter for online seeders (check if they have any active sockets)
-    const seeders = [];
-    for (const seederId of allSeeders) {
-      const socketIds = await redisClient.sMembers(`user:sockets:${seederId}`);
-      if (socketIds && socketIds.length > 0) {
-        seeders.push(seederId);
-      }
+    // If none explicitly announced but the owner is online, fall back to owner
+    if (seeders.length === 0 && peerStore.isUserOnline(file.owner_id)) {
+      seeders = [file.owner_id.toString()];
     }
 
     // Remove sensitive password hash before sending to client
@@ -175,11 +159,11 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to delete this file' });
     }
 
-    // Delete file
+    // Delete file (Postgres CASCADE deletes chunk_manifest)
     await db.query('DELETE FROM files WHERE id = $1', [fileId]);
     
-    // Clean up Redis
-    await redisClient.del(`file:seeders:${fileId}`);
+    // Clean up in-memory peer tracking
+    peerStore.deleteFile(fileId);
 
     res.json({ message: 'File deleted successfully' });
   } catch (error) {

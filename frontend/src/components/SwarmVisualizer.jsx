@@ -1,178 +1,157 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { swarmManager } from '../utils/SwarmManager';
+import { signalingManager } from '../utils/SignalingManager';
 
 export default function SwarmVisualizer() {
-  const [swarmState, setSwarmState] = useState({ peers: [], downloads: [] });
-  const canvasRef = useRef(null);
+  const [peerState, setPeerState] = useState({ peers: [], downloads: [] });
+  const [isSignalingConnected, setIsSignalingConnected] = useState(false);
 
   useEffect(() => {
     const handleStateChange = (state) => {
-      setSwarmState({ ...state });
+      setPeerState({ ...state });
     };
     
     swarmManager.addListener(handleStateChange);
     
+    // Check signaling socket status periodically
+    const checkSignaling = () => {
+      setIsSignalingConnected(!!signalingManager.socket?.connected);
+    };
+    checkSignaling();
+    const interval = setInterval(checkSignaling, 1000);
+
     return () => {
       swarmManager.removeListener(handleStateChange);
+      clearInterval(interval);
     };
   }, []);
 
-  // Native HTML5 Canvas Particle Engine
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    
-    const resize = () => {
-      canvas.width = canvas.parentElement.clientWidth;
-      canvas.height = canvas.parentElement.clientHeight;
-    };
-    resize();
-    window.addEventListener('resize', resize);
-
-    const nodeCount = 15 + (swarmState.peers.length * 5);
-    const particles = [];
-    
-    for (let i = 0; i < nodeCount; i++) {
-      particles.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * 1.5,
-        vy: (Math.random() - 0.5) * 1.5,
-        radius: Math.random() * 2 + 1.5
-      });
-    }
-
-    let animationFrameId;
-    
-    const render = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-        
-        // Move
-        p.x += p.vx;
-        p.y += p.vy;
-        
-        // Bounce
-        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
-        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
-        
-        // Draw Dot
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = '#10b981';
-        ctx.fill();
-        
-        // Draw Connections
-        for (let j = i + 1; j < particles.length; j++) {
-          const p2 = particles[j];
-          const dx = p.x - p2.x;
-          const dy = p.y - p2.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          
-          if (dist < 120) {
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(p2.x, p2.y);
-            // Opacity fades as they get further apart
-            ctx.strokeStyle = `rgba(16, 185, 129, ${0.4 * (1 - dist / 120)})`;
-            ctx.lineWidth = 1;
-            ctx.stroke();
-          }
-        }
-      }
-      
-      animationFrameId = requestAnimationFrame(render);
-    };
-    
-    render();
-
-    return () => {
-      window.removeEventListener('resize', resize);
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [swarmState.peers.length]);
+  const hasActivePeer = peerState.peers.length > 0;
 
   return (
-    <div style={{
-      background: 'var(--bg-dark)',
-      border: '1px solid rgba(255, 255, 255, 0.05)',
+    <div className="glass-panel" style={{
+      background: 'var(--bg-dark, #0f172a)',
+      border: '1px solid rgba(255, 255, 255, 0.08)',
       borderRadius: '16px',
-      overflow: 'hidden',
-      display: 'flex',
-      flexDirection: 'column'
+      overflow: 'hidden'
     }}>
-      <div style={{ padding: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '40px', height: '40px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '10px', marginBottom: '1rem' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="18" cy="5" r="3"></circle>
-            <circle cx="6" cy="12" r="3"></circle>
-            <circle cx="18" cy="19" r="3"></circle>
-            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-          </svg>
-        </div>
-        <h3 style={{ fontSize: '1.3rem', fontWeight: 800, margin: 0 }}>Swarm Network Visualization</h3>
-      </div>
-      
-      <div style={{ position: 'relative', height: '220px', background: '#0a0f1d' }}>
-        <canvas 
-          ref={canvasRef} 
-          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
-        />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+        <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <span>P2P Transfer Status</span>
+        </h3>
         
-        {swarmState.peers.length === 0 && (
-          <div style={{ 
-            position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-            background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)',
-            padding: '0.75rem 1.5rem', borderRadius: '9999px', pointerEvents: 'none'
-          }}>
-            <span style={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: '0.9rem' }}>
-              awaiting peer connections...
-            </span>
-          </div>
-        )}
+        {/* Simple live status pill */}
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          padding: '0.35rem 0.85rem',
+          borderRadius: '9999px',
+          fontSize: '0.8rem',
+          fontWeight: 600,
+          background: hasActivePeer ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.1)',
+          color: hasActivePeer ? '#10b981' : '#94a3b8',
+          border: `1px solid ${hasActivePeer ? 'rgba(16, 185, 129, 0.3)' : 'rgba(148, 163, 184, 0.2)'}`
+        }}>
+          <span style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            backgroundColor: hasActivePeer ? '#10b981' : '#64748b',
+            display: 'inline-block'
+          }}></span>
+          {hasActivePeer ? 'Peer Connected' : 'Awaiting Peer'}
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-        <div style={{ padding: '1.5rem', borderRight: '1px solid rgba(255,255,255,0.05)' }}>
-          <h4 style={{ fontSize: '0.8rem', color: '#94a3b8', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '1rem' }}>
-            Connected Peers (WebRTC)
-          </h4>
-          {swarmState.peers.length === 0 ? (
-            <div style={{ fontFamily: 'monospace', color: '#94a3b8' }}>&mdash; none active &mdash;</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {swarmState.peers.map((peerId, idx) => (
-                <div key={idx} style={{ fontFamily: 'monospace', color: 'var(--success)' }}>
-                  &bull; {peerId.substring(0, 12)}...
-                </div>
-              ))}
-            </div>
-          )}
+      {/* Connection details */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.03)',
+          padding: '1rem',
+          borderRadius: '12px',
+          border: '1px solid rgba(255, 255, 255, 0.05)'
+        }}>
+          <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Signaling Server
+          </div>
+          <div style={{
+            fontSize: '0.95rem',
+            fontWeight: 600,
+            marginTop: '0.35rem',
+            color: isSignalingConnected ? '#10b981' : '#f59e0b',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem'
+          }}>
+            <span>●</span> {isSignalingConnected ? 'Online (Socket.IO)' : 'Connecting...'}
+          </div>
+        </div>
+
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.03)',
+          padding: '1rem',
+          borderRadius: '12px',
+          border: '1px solid rgba(255, 255, 255, 0.05)'
+        }}>
+          <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Direct WebRTC Peer
+          </div>
+          <div style={{
+            fontSize: '0.95rem',
+            fontWeight: 600,
+            marginTop: '0.35rem',
+            color: hasActivePeer ? '#38bdf8' : '#94a3b8',
+            fontFamily: 'monospace'
+          }}>
+            {hasActivePeer ? `${peerState.peers[0].substring(0, 10)}...` : 'None active'}
+          </div>
+        </div>
+      </div>
+
+      {/* Active 1-to-1 Transfers */}
+      <div>
+        <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.6rem' }}>
+          Active Transfers
         </div>
         
-        <div style={{ padding: '1.5rem' }}>
-          <h4 style={{ fontSize: '0.8rem', color: '#94a3b8', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '1rem' }}>
-            Active Downloads
-          </h4>
-          {swarmState.downloads.length === 0 ? (
-            <div style={{ fontFamily: 'monospace', color: '#94a3b8' }}>&mdash; none active &mdash;</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {swarmState.downloads.map((dl, idx) => (
-                <div key={idx} style={{ fontFamily: 'monospace', color: '#f8fafc', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{dl.file.file_name}</span>
-                  <span style={{ color: dl.status === 'complete' ? 'var(--success)' : 'var(--primary)' }}>
-                    {dl.status === 'complete' ? 'DONE' : `${Math.round(dl.progress || 0)}%`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {peerState.downloads.length === 0 ? (
+          <div style={{
+            padding: '1rem',
+            textAlign: 'center',
+            fontSize: '0.85rem',
+            color: '#64748b',
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '10px'
+          }}>
+            No active peer transfers
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {peerState.downloads.map((dl, idx) => (
+              <div key={idx} style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '0.75rem 1rem',
+                background: 'rgba(255, 255, 255, 0.03)',
+                borderRadius: '8px',
+                border: '1px solid rgba(255, 255, 255, 0.05)'
+              }}>
+                <span style={{ fontSize: '0.9rem', fontWeight: 500, color: '#f1f5f9' }}>
+                  {dl.file.file_name}
+                </span>
+                <span style={{
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  color: dl.status === 'complete' ? '#10b981' : '#f43f5e'
+                }}>
+                  {dl.status === 'complete' ? 'Completed' : `${Math.round(dl.progress || 0)}%`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
-const redisClient = require('./db/redis');
+const peerStore = require('./db/peerStore');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
 
@@ -29,19 +29,18 @@ function setupSocketIO(server) {
     });
   });
 
-  io.on('connection', async (socket) => {
+  io.on('connection', (socket) => {
     console.log(`User ${socket.userId} connected on socket ${socket.id}`);
 
-    // Track multiple sockets per user (multiple tabs)
-    await redisClient.sAdd(`user:sockets:${socket.userId}`, socket.id);
-    await redisClient.set(`socket:user:${socket.id}`, socket.userId.toString());
+    // Track active socket connection in-memory
+    peerStore.addSocket(socket.userId, socket.id);
 
     // --- WebRTC Signaling Relays ---
 
-    // Relay Offer — send to all of target user's sockets EXCEPT the sender
-    socket.on('webrtc-offer', async ({ targetUserId, offer, fileId }) => {
-      const targetSocketIds = await redisClient.sMembers(`user:sockets:${targetUserId}`);
-      for (const targetSocketId of targetSocketIds) {
+    // Relay Offer: Send to target user's active sockets (excluding self)
+    socket.on('webrtc-offer', ({ targetUserId, offer, fileId }) => {
+      const targetSockets = peerStore.getSocketsForUser(targetUserId);
+      targetSockets.forEach((targetSocketId) => {
         if (targetSocketId !== socket.id) {
           io.to(targetSocketId).emit('webrtc-offer', {
             senderUserId: socket.userId,
@@ -50,10 +49,10 @@ function setupSocketIO(server) {
             fileId
           });
         }
-      }
+      });
     });
 
-    // Relay Answer
+    // Relay Answer directly to sender socket
     socket.on('webrtc-answer', ({ targetSocketId, answer, fileId }) => {
       io.to(targetSocketId).emit('webrtc-answer', {
         senderUserId: socket.userId,
@@ -64,13 +63,12 @@ function setupSocketIO(server) {
     });
 
     // Relay ICE Candidate
-    socket.on('webrtc-ice-candidate', async ({ targetSocketId, candidate }) => {
+    socket.on('webrtc-ice-candidate', ({ targetSocketId, candidate }) => {
       let target = targetSocketId;
-      // Check if targetSocketId is actually a userId
-      const socketIds = await redisClient.sMembers(`user:sockets:${targetSocketId}`);
-      if (socketIds && socketIds.length > 0) {
-        // It's a userId — pick a socket that isn't the sender
-        const otherSocket = socketIds.find(sid => sid !== socket.id);
+      // If targetSocketId is actually a userId, get an active socket
+      const userSockets = peerStore.getSocketsForUser(targetSocketId);
+      if (userSockets && userSockets.length > 0) {
+        const otherSocket = userSockets.find(sid => sid !== socket.id);
         if (otherSocket) target = otherSocket;
       }
       
@@ -81,20 +79,17 @@ function setupSocketIO(server) {
       });
     });
 
-
-    // Handle intent to seed
-    socket.on('announce-seeding', async ({ fileId }) => {
+    // Announce availability to seed/send a file
+    socket.on('announce-seeding', ({ fileId }) => {
       console.log(`User ${socket.userId} is announcing seeding for file ${fileId}`);
-      await redisClient.sAdd(`file:seeders:${fileId}`, socket.userId.toString());
+      peerStore.addSeeder(fileId, socket.userId);
       io.emit('new-seeder', { fileId, userId: socket.userId });
     });
 
     // Disconnect handler
-    socket.on('disconnect', async () => {
+    socket.on('disconnect', () => {
       console.log(`User ${socket.userId} disconnected`);
-      // Remove only this socket from the user's set
-      await redisClient.sRem(`user:sockets:${socket.userId}`, socket.id);
-      await redisClient.del(`socket:user:${socket.id}`);
+      peerStore.removeSocket(socket.id);
     });
   });
 

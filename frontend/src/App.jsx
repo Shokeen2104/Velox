@@ -98,7 +98,7 @@ function App() {
                 <div>
                   <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', fontWeight: 800 }}>Your Dashboard</h2>
                   <p style={{ color: '#94a3b8', fontSize: '1.1rem', marginBottom: '1.5rem', maxWidth: '600px', lineHeight: '1.6' }}>
-                    Register files to seed them, or pull files shared by peers across the swarm.
+                    Share files directly peer-to-peer via WebRTC, or download files shared by active peers.
                   </p>
                   
                   <div className="peer-badge" style={{ marginBottom: '3rem' }}>

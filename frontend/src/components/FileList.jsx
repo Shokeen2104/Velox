@@ -204,8 +204,18 @@ export default function FileList({ token, activeTab, refreshKey }) {
                   <div>
                     <strong style={{ fontSize: '1.1rem' }}>{!file.is_public && '🔒 '} {file.file_name}</strong>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#94a3b8', marginTop: '0.4rem', fontFamily: 'monospace' }}>
-                      <span className="seeder-badge" title="Active Seeders">{file.seeder_count || 1}</span>
-                      {formatBytes(file.total_size)} &bull; seeded by {file.owner}
+                      <span 
+                        className="seeder-badge" 
+                        title="Peer Status" 
+                        style={{ 
+                          background: (file.seeder_count > 0 || file.is_available) ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                          color: (file.seeder_count > 0 || file.is_available) ? '#10b981' : '#ef4444',
+                          border: `1px solid ${(file.seeder_count > 0 || file.is_available) ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                        }}
+                      >
+                        {(file.seeder_count > 0 || file.is_available) ? '● Peer Online' : '○ Peer Offline'}
+                      </span>
+                      {formatBytes(file.total_size)} &bull; shared by {file.owner}
                       {isDownloading && dlState?.speed > 0 && (
                         <span style={{ color: 'var(--primary)', marginLeft: '0.25rem' }}>
                           &bull; {formatSpeed(dlState.speed)}

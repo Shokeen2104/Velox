@@ -1,11 +1,17 @@
 import { signalingManager } from './SignalingManager';
 
+/**
+ * SwarmManager (1-to-1 WebRTC Peer Transfer Manager)
+ * 
+ * Manages direct browser-to-browser WebRTC DataChannel connections,
+ * sequential chunk streaming, and on-the-fly SHA-256 integrity verification.
+ */
 export class SwarmManager {
   constructor() {
-    this.peers = new Map(); 
-    this.dataChannels = new Map();
-    this.seededFiles = new Map();
-    this.activeDownloads = new Map();
+    this.peers = new Map();           // peerId -> RTCPeerConnection
+    this.dataChannels = new Map();    // peerId -> RTCDataChannel
+    this.seededFiles = new Map();     // fileId -> File / Blob (held locally by sender)
+    this.activeDownloads = new Map(); // fileId -> downloadState
     this.listeners = [];
 
     // Clear any stale listeners from previous HMR instances
@@ -40,29 +46,26 @@ export class SwarmManager {
     this.listeners.forEach(cb => cb(state));
   }
 
+  // Sender registers a file in local memory ready to stream to requesting peers
   startSeeding(fileId, fileBlob) {
     this.seededFiles.set(fileId.toString(), fileBlob);
     signalingManager.announceSeeding(fileId);
-    console.log(`Now seeding file ${fileId}`);
+    console.log(`[P2P] Ready to send file ${fileId}`);
     this.notifyUI();
   }
 
+  // Receiver initiates a 1-to-1 P2P download
   async startDownload(file, chunksManifest, seeders) {
     const fileIdStr = file.id.toString();
-    console.log(`[SwarmManager] startDownload called for file ${fileIdStr} (${file.file_name})`);
-    console.log(`[SwarmManager] seeders:`, seeders);
-    console.log(`[SwarmManager] seededFiles keys:`, Array.from(this.seededFiles.keys()));
-    console.log(`[SwarmManager] activeDownloads keys:`, Array.from(this.activeDownloads.keys()));
 
     if (this.activeDownloads.has(fileIdStr)) {
-      console.log(`[SwarmManager] Download already active for ${fileIdStr}, skipping.`);
+      console.log(`[P2P] Download already active for ${fileIdStr}, skipping.`);
       return;
     }
 
-    // If we already have this file in memory (we are the seeder), download directly
+    // Fast-path: If the sender is the same client (same browser session)
     const seededFile = this.seededFiles.get(fileIdStr);
     if (seededFile) {
-      console.log(`[SwarmManager] File ${fileIdStr} found in local memory, downloading directly.`);
       this.activeDownloads.set(fileIdStr, {
         file,
         manifest: chunksManifest,
@@ -83,8 +86,7 @@ export class SwarmManager {
       return;
     }
 
-    console.log(`[SwarmManager] File NOT in local memory, starting P2P download...`);
-
+    // Set up active download state
     this.activeDownloads.set(fileIdStr, {
       file,
       manifest: chunksManifest,
@@ -97,29 +99,30 @@ export class SwarmManager {
     });
     this.notifyUI();
 
+    // 1-to-1 transfer: connect directly to the primary online sender
     if (seeders && seeders.length > 0) {
-      console.log(`[SwarmManager] Connecting to seeder: ${seeders[0]}`);
-      this.connectToPeer(seeders[0], file.id);
+      const targetSenderId = seeders[0];
+      console.log(`[P2P] Connecting to sender: ${targetSenderId}`);
+      this.connectToPeer(targetSenderId, file.id);
 
-      // Timeout: if still 'connecting' after 10s, the peer is unreachable
+      // Timeout safety: 12 seconds connection timeout
       setTimeout(() => {
         const dl = this.activeDownloads.get(fileIdStr);
         if (dl && dl.status === 'connecting') {
-          console.error(`[SwarmManager] Connection timeout for file ${fileIdStr}`);
-          dl.status = 'failed (seeder unreachable — they may need to re-upload the file)';
+          console.error(`[P2P] Connection timeout for file ${fileIdStr}`);
+          dl.status = 'failed (sender unreachable - sender must be online)';
           this.notifyUI();
         }
-      }, 10000);
+      }, 12000);
     } else {
-      console.error('[SwarmManager] No seeders available for file', file.id);
-      this.activeDownloads.get(fileIdStr).status = 'failed (no seeders)';
+      console.error('[P2P] No sender currently online for file', file.id);
+      this.activeDownloads.get(fileIdStr).status = 'failed (sender is offline)';
       this.notifyUI();
     }
   }
 
+  // Create WebRTC Offer and send via Socket.IO signaling
   async connectToPeer(targetUserId, fileId) {
-    // For simplicity, we use the targetUserId as the map key temporarily. 
-    // It will be replaced with socketId during handshake.
     const pc = this.createPeerConnection(targetUserId);
     const dc = pc.createDataChannel(`transfer-${fileId}`);
     this.setupDataChannel(dc, targetUserId, fileId);
@@ -131,8 +134,9 @@ export class SwarmManager {
     this.notifyUI();
   }
 
+  // Handle incoming Offer from receiver (Sender side)
   async handleOffer({ _senderUserId, senderSocketId, offer, fileId }) {
-    console.log(`Received offer from ${senderSocketId}`);
+    console.log(`[P2P] Received offer from ${senderSocketId}`);
     const pc = this.createPeerConnection(senderSocketId);
 
     pc.ondatachannel = (event) => {
@@ -155,15 +159,16 @@ export class SwarmManager {
     this.notifyUI();
   }
 
+  // Handle incoming Answer from sender (Receiver side)
   async handleAnswer({ senderSocketId, answer }) {
-    // We need to find the PC we initiated. In our simple mapping, it might be under targetUserId.
-    // For this prototype, we'll assume the first PC is the one we want.
     let pc = this.peers.get(senderSocketId);
     if (!pc) {
       const firstKey = Array.from(this.peers.keys())[0];
       pc = this.peers.get(firstKey);
-      this.peers.delete(firstKey);
-      this.peers.set(senderSocketId, pc);
+      if (pc) {
+        this.peers.delete(firstKey);
+        this.peers.set(senderSocketId, pc);
+      }
     }
 
     if (pc) {
@@ -179,6 +184,7 @@ export class SwarmManager {
     this.notifyUI();
   }
 
+  // Handle incoming ICE candidate
   async handleIceCandidate({ senderSocketId, candidate }) {
     let pc = this.peers.get(senderSocketId);
     
@@ -218,7 +224,7 @@ export class SwarmManager {
     };
 
     pc.onconnectionstatechange = () => {
-      console.log(`Connection state with ${peerId}: ${pc.connectionState}`);
+      console.log(`[P2P] Connection state with ${peerId}: ${pc.connectionState}`);
       this.notifyUI();
     };
 
@@ -234,7 +240,8 @@ export class SwarmManager {
       const download = this.activeDownloads.get(fileId.toString());
       if (download) {
         download.status = 'downloading';
-        this.requestChunk(channel, fileId, 0); // Start requesting chunks
+        // Start sequential chunk transfer from chunk 0
+        this.requestChunk(channel, fileId, 0);
         this.notifyUI();
       }
     };
@@ -247,7 +254,7 @@ export class SwarmManager {
         } else if (msg.type === 'chunk_header') {
           this.lastIncomingHeader = msg;
         } else if (msg.type === 'error') {
-          console.error(`Peer error: ${msg.message}`);
+          console.error(`[P2P] Peer error: ${msg.message}`);
           const download = this.activeDownloads.get(fileId.toString());
           if (download) {
             download.status = `failed (${msg.message})`;
@@ -255,23 +262,30 @@ export class SwarmManager {
           }
         }
       } else {
-        // Binary payload
+        // Binary payload: received chunk ArrayBuffer
         if (this.lastIncomingHeader) {
-          await this.handleChunkReceived(event.data, this.lastIncomingHeader.fileId, this.lastIncomingHeader.chunkIndex, channel);
+          await this.handleChunkReceived(
+            event.data, 
+            this.lastIncomingHeader.fileId, 
+            this.lastIncomingHeader.chunkIndex, 
+            channel
+          );
           this.lastIncomingHeader = null;
         }
       }
     };
   }
 
+  // Request a specific chunk index sequentially
   requestChunk(channel, fileId, chunkIndex) {
     channel.send(JSON.stringify({ type: 'request_chunk', fileId, chunkIndex }));
   }
 
+  // Sender handles chunk request from receiver
   async handleChunkRequest(channel, fileId, chunkIndex) {
     const file = this.seededFiles.get(fileId.toString());
     if (!file) {
-      channel.send(JSON.stringify({ type: 'error', message: 'File not in memory on this peer' }));
+      channel.send(JSON.stringify({ type: 'error', message: 'File not in sender memory' }));
       return;
     }
 
@@ -285,29 +299,29 @@ export class SwarmManager {
     channel.send(buffer);
   }
 
+  // Receiver verifies the SHA-256 hash of the received chunk
   async handleChunkReceived(arrayBuffer, fileId, chunkIndex, channel) {
     const fileIdStr = fileId.toString();
     const download = this.activeDownloads.get(fileIdStr);
     if (!download) return;
 
-    // 1. Verify Hash
+    // 1. Compute SHA-256 of the received bytes
     const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
+    // 2. Validate against manifest
     const manifestChunk = download.manifest.find(c => c.chunk_index === chunkIndex);
     if (manifestChunk && manifestChunk.chunk_hash === hashHex) {
-      console.log(`Chunk ${chunkIndex} verified.`);
       download.receivedChunks.set(chunkIndex, new Blob([arrayBuffer]));
       download.bytesReceived = (download.bytesReceived || 0) + arrayBuffer.byteLength;
 
       const elapsed = Math.max((Date.now() - (download.startTime || Date.now())) / 1000, 0.1);
       download.speed = Math.round(download.bytesReceived / elapsed);
-      
       download.progress = (download.receivedChunks.size / download.manifest.length) * 100;
       this.notifyUI();
 
-      // Request next chunk or finish
+      // Sequential progression: request next chunk or finalize
       if (download.receivedChunks.size < download.manifest.length) {
         this.requestChunk(channel, fileId, chunkIndex + 1);
       } else {
@@ -317,11 +331,13 @@ export class SwarmManager {
         this.assembleAndDownload(download);
       }
     } else {
-      console.error(`Chunk ${chunkIndex} hash mismatch!`);
-      // Re-request chunk or disconnect bad peer
+      console.error(`[P2P] Chunk ${chunkIndex} SHA-256 hash mismatch! Discarding corrupt chunk.`);
+      // Retry the current chunk once
+      this.requestChunk(channel, fileId, chunkIndex);
     }
   }
 
+  // Reassemble all verified chunk Blobs and trigger browser download
   assembleAndDownload(download) {
     const chunks = [];
     for (let i = 0; i < download.manifest.length; i++) {

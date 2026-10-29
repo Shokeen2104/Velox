@@ -1,16 +1,3 @@
-const redis = require('redis');
-require('dotenv').config();
-
-const redisClient = redis.createClient({
-  url: process.env.REDIS_URL || 'redis://localhost:6379'
-});
-
-redisClient.on('error', (err) => console.log('Redis Client Error', err));
-
-// Connect to Redis immediately
-(async () => {
-  await redisClient.connect();
-  console.log('Connected to Redis');
-})();
-
-module.exports = redisClient;
+// Redis has been replaced with in-memory peer tracking in db/peerStore.js
+// for single-node prototype architecture.
+module.exports = null;

@@ -1,23 +1,30 @@
 # VELOX ⚡
+### Direct Browser-to-Browser File Transfer via WebRTC & Node.js
 
-A high-performance, decentralized peer-to-peer (P2P) file sharing application built with **WebRTC**, **Socket.IO**, **Node.js**, **PostgreSQL**, and **React**.
+[![React](https://img.shields.io/badge/React-19-61dafb?logo=react)](https://react.dev/)
+[![Node.js](https://img.shields.io/badge/Node.js-Express-68a063?logo=node.js)](https://nodejs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791?logo=postgresql)](https://www.postgresql.org/)
+[![WebRTC](https://img.shields.io/badge/WebRTC-DataChannels-333333?logo=webrtc)](https://webrtc.org/)
+[![Socket.IO](https://img.shields.io/badge/Socket.IO-Signaling-010101?logo=socketdotio)](https://socket.io/)
 
-Files shared on VELOX **never touch the server's disk**. Instead, files are chunked and hashed directly in the browser, while the server coordinates signaling, manifests, and seeder discovery. Binary payloads are streamed directly between peers across encrypted WebRTC DataChannels.
+**VELOX** is a direct peer-to-peer file transfer web application. Files are transferred directly between two browsers using **WebRTC DataChannels**, ensuring that file data never passes through or gets stored on the server's disk.
 
----
-
-## 🚀 Key Features
-
-- **Direct Browser-to-Browser Transfer**: Zero intermediary cloud or server file storage. Transfers execute directly between peers using WebRTC DataChannels.
-- **Cryptographic Chunk Verification**: Files are split into 256 KB blocks and individually validated against SHA-256 hashes defined in the file manifest.
-- **Live Swarm & Network Visualization**: Interactive animated network canvas powered by `@tsparticles/react` that visualizes peer nodes and transfer activity.
-- **Multi-Tab & Multi-Socket Presence**: Redis-backed seeder tracking (`user:sockets:*` and `file:seeders:*`) ensures multi-tab peers seamlessly route offers, answers, and ICE candidates without self-connection deadlock.
-- **Public & Password-Protected Files**: Secure file sharing with bcrypt password hashing for private distributions.
-- **Real-Time Transfer Metrics**: Active progress reporting with live transfer speed calculation and dynamic seeder discovery.
+The backend coordinates authentication, file manifests in PostgreSQL, and real-time WebRTC signaling via Socket.IO, while data integrity is guaranteed through client-side SHA-256 chunk verification.
 
 ---
 
-## 🏗️ Architecture Overview
+## 🎯 Key Features
+
+- **Direct 1-to-1 P2P Transfer**: File payloads stream directly between sender and receiver browsers over encrypted WebRTC DataChannels.
+- **Cryptographic Chunk Verification**: Files are split into 256 KB blocks in the browser. Each block is verified against a SHA-256 hash from the manifest upon receipt.
+- **Socket.IO Signaling**: Real-time SDP offer/answer exchange and ICE candidate negotiation managed via Socket.IO.
+- **PostgreSQL Manifest Store**: Atomically stores file metadata and chunk verification manifests using database transactions.
+- **JWT & Password Protection**: Secured endpoints via JSON Web Tokens, with optional bcrypt-hashed password protection for private files.
+- **Transfer Progress & Status**: Clear visual feedback showing real-time transfer progress, speed, and peer connection status.
+
+---
+
+## 🏗️ Architecture
 
 ```
                           ┌──────────────────────────┐
@@ -27,68 +34,89 @@ Files shared on VELOX **never touch the server's disk**. Instead, files are chun
                                         │
                                         ▼
 ┌─────────────────┐       ┌──────────────────────────┐       ┌─────────────────┐
-│                 │◄─────►│    Express + Socket.IO   │◄─────►│                 │
-│  Browser Peer A │       │      Signaling Node      │       │  Browser Peer B │
-│    (Seeder)     │       └─────────────▲────────────┘       │   (Leecher)     │
-│                 │                     │                    │                 │
-│                 │       ┌─────────────▼────────────┐       │                 │
-│                 │       │       Redis Store        │       │                 │
-│                 │       │  (Sockets & Seeder Sets) │       │                 │
-│                 │       └──────────────────────────┘       │                 │
-│                 │                                          │                 │
-│                 │◄════════════════════════════════════════►│                 │
-└─────────────────┘       Direct WebRTC DataChannel          └─────────────────┘
-                         (256 KB Chunks + SHA-256)
+│                 │◄─────►│    Node.js + Express     │◄─────►│                 │
+│  Sender Browser │       │      Signaling Node      │       │ Receiver Browser│
+│                 │       │       (Socket.IO)        │       │                 │
+└────────┬────────┘       └──────────────────────────┘       └────────▲────────┘
+         │                                                            │
+         │                 Direct WebRTC DataChannel                  │
+         └════════════════════════════════════════════════════════════┘
+                     (256 KB Chunks • SHA-256 Verification)
 ```
 
-1. **Manifest Registration**: When a seeder selects a file, it is sliced into 256 KB chunks and hashed with `crypto.subtle.digest('SHA-256')`. Only the manifest is stored in PostgreSQL.
-2. **Signaling & Discovery**: Socket.IO coordinates SDP offers, answers, and ICE candidate exchanges between peers.
-3. **P2P Transfer**: The downloading peer requests individual chunks by index over an open WebRTC `RTCDataChannel`. Each chunk is verified immediately upon receipt before disk assembly.
+### Data vs. Control Plane Separation
+* **Control Plane (Signaling & Metadata)**: Handled by Express and Socket.IO. Authenticates users, stores file manifests in PostgreSQL, and routes connection offers/answers between peers.
+* **Data Plane (Binary Transfer)**: Handled entirely by the browser. The file bytes travel directly over an `RTCDataChannel` (SCTP protocol) without touching the backend server or its database.
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: React 19, Vite, React Router 7, `@tsparticles/react`, WebRTC API, Socket.IO Client
-- **Backend**: Node.js, Express 5, Socket.IO 4, `pg` (PostgreSQL client with transactions), `redis` v6, JSON Web Tokens (`jsonwebtoken`), `bcrypt`
-- **Database & Cache**: PostgreSQL (Metadata & Manifests), Redis (Presence & Swarm state)
-- **Deployment**: Docker Compose for containerized local services
+| Layer | Technology | Purpose |
+|---|---|---|
+| **Frontend** | React 19, Vite | Responsive UI, file slice handling, and Web Crypto API. |
+| **P2P Transport** | WebRTC (`RTCDataChannel`) | Direct browser-to-browser binary transfer. |
+| **Signaling** | Node.js, Express, Socket.IO | WebRTC session negotiation (SDP offer/answer, ICE). |
+| **Database** | PostgreSQL 15 | Relational storage for users, file metadata, and chunk hashes. |
+| **Security** | JWT, bcrypt | User authentication and private file password protection. |
 
 ---
 
-## 📦 Project Structure
+## 🔄 How a Transfer Works
 
 ```
-VELOX/
-├── backend/
-│   ├── db/
-│   │   ├── migrate.js        # Automatic DB schema migration
-│   │   ├── postgres.js       # PostgreSQL pool and transaction client
-│   │   └── redis.js          # Redis client configuration
-│   ├── middleware/
-│   │   └── auth.js           # JWT authentication middleware
-│   ├── routes/
-│   │   ├── auth.js           # User registration and login
-│   │   └── files.js          # File manifest registration & discovery
-│   ├── socket.js             # Socket.IO WebRTC signaling engine
-│   ├── server.js             # Express application entrypoint
-│   └── package.json
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── Auth.jsx             # User authentication forms
-│   │   │   ├── FileList.jsx         # Swarm file browser & download manager
-│   │   │   ├── FileRegister.jsx     # Client-side chunking and file publishing
-│   │   │   ├── SwarmVisualizer.jsx  # tsParticles interactive network canvas
-│   │   │   └── Toast.jsx            # Notification toast system
-│   │   ├── utils/
-│   │   │   ├── SignalingManager.js  # Socket.IO signaling wrapper
-│   │   │   └── SwarmManager.js      # WebRTC peer connections & chunk pipelines
-│   │   ├── App.jsx
-│   │   ├── index.css
-│   │   └── main.jsx
-│   └── package.json
-└── docker-compose.yml        # PostgreSQL and Redis services
+1. Manifest Registration:
+   Uploader slices file into 256 KB blocks -> Computes SHA-256 per chunk -> POST /api/files/register.
+   Server saves file metadata & chunk hashes atomically in PostgreSQL.
+
+2. Discovery & Signaling:
+   Downloader requests manifest (POST /api/files/:id/manifest).
+   Downloader emits 'webrtc-offer' targeting the uploader via Socket.IO.
+   Uploader responds with 'webrtc-answer'.
+   ICE candidates are exchanged to establish a direct P2P connection.
+
+3. Binary Chunk Transfer:
+   Downloader requests chunk 0 via RTCDataChannel.
+   Uploader reads chunk 0 from memory/file and sends binary ArrayBuffer.
+   Downloader verifies SHA-256 hash against manifest.
+   On match, downloader requests chunk 1 (sequential transfer).
+
+4. Assembly:
+   Once all chunks are verified, Downloader constructs a Blob and triggers client download.
+```
+
+---
+
+## 📐 Database Schema
+
+```sql
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE files (
+  id SERIAL PRIMARY KEY,
+  owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  file_name VARCHAR(255) NOT NULL,
+  total_size BIGINT NOT NULL,
+  chunk_size INTEGER NOT NULL,
+  total_chunks INTEGER NOT NULL,
+  is_public BOOLEAN DEFAULT true,
+  password_hash VARCHAR(255),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE chunk_manifest (
+  id SERIAL PRIMARY KEY,
+  file_id INTEGER REFERENCES files(id) ON DELETE CASCADE,
+  chunk_index INTEGER NOT NULL,
+  chunk_hash VARCHAR(64) NOT NULL,
+  chunk_size INTEGER NOT NULL,
+  UNIQUE(file_id, chunk_index)
+);
 ```
 
 ---
@@ -96,100 +124,52 @@ VELOX/
 ## 🚦 Getting Started
 
 ### 1. Prerequisites
-
 - [Node.js](https://nodejs.org/) (v18 or higher)
-- [Docker](https://www.docker.com/) & Docker Compose
+- [Docker](https://www.docker.com/) (for PostgreSQL)
 
-### 2. Start PostgreSQL and Redis
-
-Run the provided Docker Compose configuration from the repository root:
-
+### 2. Start PostgreSQL
 ```bash
 docker-compose up -d
 ```
+Starts PostgreSQL on port `5434` (database: `swarmshare`, user: `swarmshare`).
 
-This starts:
-- **PostgreSQL**: Port `5434` (`swarmshare` database)
-- **Redis**: Port `6379`
-
-### 3. Setup and Run Backend
-
+### 3. Start Backend
 ```bash
 cd backend
 npm install
-
-# Start the server (runs migrations automatically)
 npm start
 ```
+Runs database migrations automatically and starts the server on `http://localhost:3001`.
 
-The backend server will run on `http://localhost:3001`.
-
-#### Environment Variables (`backend/.env`):
-```env
-PORT=3001
-JWT_SECRET=your_jwt_secret
-POSTGRES_USER=swarmshare
-POSTGRES_HOST=localhost
-POSTGRES_DB=swarmshare
-POSTGRES_PASSWORD=password
-POSTGRES_PORT=5434
-REDIS_URL=redis://localhost:6379
-FRONTEND_URL=http://localhost:5173
-```
-
-### 4. Setup and Run Frontend
-
+### 4. Start Frontend
 In a separate terminal:
-
 ```bash
 cd frontend
 npm install
-
-# Start the Vite development server
 npm run dev
 ```
-
-The frontend will run on `http://localhost:5173`.
+Open `http://localhost:5173` in your browser.
 
 ---
 
-## 📡 API Endpoints Reference
+## 📡 API Reference
 
-| Method | Endpoint | Auth Required | Description |
+| Method | Endpoint | Auth | Description |
 |---|---|:---:|---|
-| `GET` | `/` | No | API status and version check |
-| `GET` | `/health` | No | Health check endpoint for uptime monitors |
-| `POST` | `/api/auth/signup` | No | Create a new user account with validated credentials |
-| `POST` | `/api/auth/login` | No | Authenticate user and receive a 7-day JWT token |
-| `GET` | `/api/files` | Yes | List all registered files enriched with active seeder counts |
-| `POST` | `/api/files/register` | Yes | Register a file chunk manifest and start seeding |
-| `POST` | `/api/files/:id/manifest` | Yes | Retrieve chunk hashes and active seeders (requires password if private) |
-| `DELETE` | `/api/files/:id` | Yes | Delete an owned file and purge active seeder state |
+| `POST` | `/api/auth/signup` | No | Register a new user account |
+| `POST` | `/api/auth/login` | No | Authenticate user & return JWT token |
+| `GET` | `/api/files` | Yes | List all registered files and availability |
+| `POST` | `/api/files/register` | Yes | Register a file's chunk manifest |
+| `POST` | `/api/files/:id/manifest` | Yes | Retrieve chunk hashes (verifies password if private) |
+| `DELETE` | `/api/files/:id` | Yes | Delete owned file and associated manifest |
 
 ---
 
-## 🔧 Troubleshooting & Tips
+## 💬 Interview Discussion Points & Trade-offs
 
-- **Database Connection Issues**:
-  - Verify Docker is running: `docker ps`.
-  - The PostgreSQL port is mapped to host `5434` to avoid collision with standard system Postgres instances on `5432`.
-- **Redis Connection**:
-  - Redis runs on standard port `6379`. If connecting from a custom environment, set `REDIS_URL` in `backend/.env`.
-- **WebRTC Peer Connectivity across Networks**:
-  - For cross-network transfers behind asymmetric NATs, ensure Google STUN servers (`stun:stun.l.google.com:19302`) configured in `SwarmManager.js` are reachable.
-- **Multiple Browser Tabs**:
-  - You can test peer-to-peer sharing locally by opening two separate browser windows (or one incognito window) with different accounts.
-
----
-
-## 🔒 Security & Verification
-
-- **Integrity Guarantee**: Chunks are verified against cryptographic SHA-256 digests prior to saving, preventing corrupt or tampered payloads.
-- **Authentication**: REST routes and Socket.IO signaling handshakes are secured with JWT bearer tokens.
-- **Private Manifests**: Access to private file manifests requires password verification via bcrypt. Password hashes are never leaked in manifest responses.
-
----
-
-## 📜 License
-
-ISC License.
+* **Why WebRTC DataChannels instead of WebSockets for file transfer?**
+  WebSockets require all binary data to route through the application server, consuming significant bandwidth and CPU under load. WebRTC DataChannels connect clients peer-to-peer over SCTP, using the server strictly for lightweight signaling.
+* **Why chunk the file and hash each piece?**
+  Sending a 500 MB file as a single payload can exhaust browser memory and cause data channel buffer congestion. Breaking files into 256 KB chunks enables flow control and per-chunk verification: if a chunk fails integrity verification, only that 256 KB piece is re-requested instead of the entire file.
+* **How would this scale horizontally in production?**
+  In this prototype, signaling is kept in-memory for simplicity. To run multiple backend instances, we would attach a Redis pub/sub adapter to Socket.IO so signaling events can route between instances, and add a TURN relay server (e.g. Coturn) to handle symmetric NAT environments where direct peer connections fail.
