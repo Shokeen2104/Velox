@@ -79,33 +79,31 @@ export default function FileRegister({ token, onFileRegistered }) {
     }
   };
 
+  const formatFileSize = (bytes) => {
+    if (!bytes) return '0 B';
+    const mb = bytes / (1024 * 1024);
+    if (mb >= 1) return `${mb.toFixed(2)} MB`;
+    return `${(bytes / 1024).toFixed(2)} KB`;
+  };
+
   return (
-    <div className="glass-panel" style={{ marginTop: '2rem' }}>
+    <div className="dark-card">
+      {/* Upload Icon Box */}
       <div 
+        className="upload-icon-box"
         onClick={() => fileInputRef.current && fileInputRef.current.click()}
-        style={{ 
-          display: 'inline-flex', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          width: '48px', 
-          height: '48px', 
-          background: 'rgba(244, 63, 94, 0.15)', 
-          borderRadius: '12px', 
-          marginBottom: '1.5rem',
-          cursor: 'pointer',
-          transition: 'transform 0.2s ease, background 0.2s ease'
-        }}
-        title="Click to select file"
+        style={{ cursor: 'pointer' }}
+        title="Choose file to seed"
       >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-          <polyline points="17 8 12 3 7 8"></polyline>
-          <line x1="12" y1="3" x2="12" y2="15"></line>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
         </svg>
       </div>
-      
-      <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>Register a File to Seed</h3>
-      <p style={{ color: '#64748b', fontSize: '1rem', marginBottom: '2rem', lineHeight: '1.6' }}>
+
+      <h3 className="card-title">Register a File to Seed</h3>
+      <p className="card-description">
         Select a file to share. It's hashed locally in your browser — only chunk metadata reaches the server, the file itself never leaves your device.
       </p>
 
@@ -116,57 +114,76 @@ export default function FileRegister({ token, onFileRegistered }) {
         style={{ display: 'none' }}
       />
 
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <button 
-            className="btn" 
-            onClick={() => fileInputRef.current.click()}
-            style={{ 
-              backgroundColor: 'var(--primary)', 
-              color: '#ffffff', 
-              borderRadius: '12px', 
-              padding: '0.75rem 1.5rem',
-              fontWeight: 600,
-              boxShadow: '0 4px 14px rgba(244, 63, 94, 0.35)'
-            }}
-            disabled={isProcessing}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
-              Select File
-            </span>
-          </button>
-        {file && <span style={{ fontWeight: 'bold', color: '#1e293b' }}>{file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)</span>}
+      {/* Button: + SELECT FILE */}
+      <div>
+        <button 
+          type="button"
+          className="btn-red" 
+          onClick={() => fileInputRef.current && fileInputRef.current.click()}
+          disabled={isProcessing}
+        >
+          <span style={{ fontSize: '1rem', lineHeight: '0.8', marginRight: '2px' }}>+</span> SELECT FILE
+        </button>
       </div>
 
       {file && (
-        <div style={{ marginTop: '1.5rem' }}>
+        <div style={{
+          marginTop: '1.25rem',
+          padding: '1rem',
+          background: 'var(--bg-inset)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '8px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+              <span className="file-badge" style={{ minWidth: 'auto', padding: '2px 6px' }}>FILE</span>
+              <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {file.name}
+              </span>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                ({formatFileSize(file.size)})
+              </span>
+            </div>
+            <button 
+              type="button" 
+              onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.1rem' }}
+              title="Remove file"
+            >
+              ×
+            </button>
+          </div>
+
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
               <input 
                 type="checkbox" 
                 checked={!isPublic} 
                 onChange={(e) => setIsPublic(!e.target.checked)} 
+                style={{ accentColor: 'var(--accent-red)', cursor: 'pointer' }}
               />
               Make this file Private (requires password)
             </label>
             {!isPublic && (
               <input 
                 type="password"
-                placeholder="Enter a password"
+                placeholder="Enter password for this file"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                style={{ marginTop: '0.5rem', width: '100%' }}
-                className="input-group"
+                className="form-input"
+                style={{ marginTop: '0.5rem', width: '100%', fontSize: '0.82rem', padding: '8px 12px' }}
               />
             )}
           </div>
+
           <button 
-            className="btn" 
+            type="button"
+            className="btn-red" 
             onClick={handleRegister} 
             disabled={isProcessing || (!isPublic && !password)}
-            style={{ width: '100%' }}
+            style={{ width: '100%', padding: '10px 16px' }}
           >
-            {isProcessing ? 'Processing...' : 'Register & Start Seeding'}
+            {isProcessing ? 'Hashing & Registering...' : 'Start Seeding to Network'}
           </button>
         </div>
       )}
@@ -178,8 +195,16 @@ export default function FileRegister({ token, onFileRegistered }) {
       )}
 
       {status && (
-        <div style={{ marginTop: '1rem', color: status.includes('Error') ? 'var(--danger)' : 'var(--success)' }}>
-          {status}
+        <div style={{ 
+          marginTop: '0.9rem', 
+          fontSize: '0.8rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.45rem',
+          color: status.includes('Error') ? 'var(--status-red)' : 'var(--status-green)'
+        }}>
+          <span className={`status-dot ${status.includes('Error') ? 'red' : 'green'}`}></span>
+          <span>{status}</span>
         </div>
       )}
     </div>

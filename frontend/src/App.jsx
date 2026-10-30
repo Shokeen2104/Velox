@@ -49,22 +49,25 @@ function App() {
 
   return (
     <>
-      <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '3rem' }}>
-          <h1 className="app-title" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '1.75rem' }}>
-            <div className="glowing-dot"></div>
-            VELOX
-          </h1>
+      <header className="app-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+          <div className="brand-wrapper" onClick={() => token && setActiveTab('home')}>
+            <span className="status-dot green"></span>
+            <span className="brand-title">VELOX</span>
+          </div>
+
           {token && (
-            <div className="tabs-container" style={{ marginBottom: 0, borderBottom: 'none', paddingBottom: 0 }}>
+            <div className="nav-tabs-wrapper">
               <button 
-                className={`tab-btn ${activeTab === 'home' ? 'active' : ''}`}
+                type="button"
+                className={`nav-tab-btn ${activeTab === 'home' ? 'active' : ''}`}
                 onClick={() => setActiveTab('home')}
               >
                 All Files
               </button>
               <button 
-                className={`tab-btn ${activeTab === 'uploads' ? 'active' : ''}`}
+                type="button"
+                className={`nav-tab-btn ${activeTab === 'uploads' ? 'active' : ''}`}
                 onClick={() => setActiveTab('uploads')}
               >
                 My Uploads
@@ -72,52 +75,63 @@ function App() {
             </div>
           )}
         </div>
+
         {token && (
-          <button 
-            onClick={handleLogout} 
-            className="btn" 
-            style={{ background: 'transparent', border: '1px solid var(--glass-border)', padding: '0.5rem 1rem' }}
-          >
-            Logout
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="header-pill">
+              <span className={`status-dot ${peerCount > 0 ? 'green' : 'red'}`}></span>
+              <span>{peerCount} {peerCount === 1 ? 'peer' : 'peers'} connected</span>
+            </div>
+            <button 
+              type="button"
+              onClick={handleLogout} 
+              className="logout-btn"
+            >
+              Logout
+            </button>
+          </div>
         )}
       </header>
 
       <ToastProvider>
-        <main className="container">
+        <main className="app-container">
           <Routes>
             <Route path="/login" element={token ? <Navigate to="/files" /> : <Auth setToken={setToken} />} />
             <Route path="/files" element={
               token ? (
                 <div>
-                  <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', fontWeight: 800 }}>Your Dashboard</h2>
-                  <p style={{ color: '#94a3b8', fontSize: '1.1rem', marginBottom: '1.5rem', maxWidth: '600px', lineHeight: '1.6' }}>
-                    Share files directly peer-to-peer via WebRTC, or download files shared by active peers.
-                  </p>
-                  
-                  <div className="peer-badge" style={{ marginBottom: '3rem' }}>
-                    <div className="glowing-dot" style={{ 
-                      background: peerCount > 0 ? 'var(--success)' : '#ef4444', 
-                      boxShadow: `0 0 8px ${peerCount > 0 ? 'var(--success)' : '#ef4444'}` 
-                    }}></div>
-                    {peerCount} {peerCount === 1 ? 'peer' : 'peers'} connected
-                  </div>
-                  
-                  {activeTab === 'home' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '3rem' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                        <FileRegister token={token} onFileRegistered={handleFileRegistered} />
-                        <SwarmVisualizer />
-                      </div>
-                      <div>
-                        <FileList token={token} activeTab={activeTab} refreshKey={refreshKey} />
-                      </div>
+                  {/* Dashboard Top Area */}
+                  <div className="dashboard-top">
+                    <div>
+                      <h2 className="dashboard-heading">
+                        {activeTab === 'home' ? 'Your Dashboard' : 'My Uploads'}
+                      </h2>
+                      <p className="dashboard-subheading">
+                        {activeTab === 'home' 
+                          ? 'Share files directly peer-to-peer via WebRTC, or download files shared by active peers.'
+                          : 'Manage and monitor all files you have seeded and registered to the peer network.'}
+                      </p>
                     </div>
-                  ) : (
-                    <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+
+                    <div className="mesh-status-pill">
+                      <span className={`status-dot ${peerCount > 0 ? 'green' : 'red'}`}></span>
+                      <span>Mesh Status: {peerCount > 0 ? 'Connected' : 'Standby'}</span>
+                    </div>
+                  </div>
+
+                  {/* 2-Column Responsive Dashboard Layout */}
+                  <div className="dashboard-grid">
+                    {/* Left Column: Register file & Swarm Visualizer */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+                      <FileRegister token={token} onFileRegistered={handleFileRegistered} />
+                      <SwarmVisualizer />
+                    </div>
+
+                    {/* Right Column: File List */}
+                    <div>
                       <FileList token={token} activeTab={activeTab} refreshKey={refreshKey} />
                     </div>
-                  )}
+                  </div>
                 </div>
               ) : <Navigate to="/login" />
             } />
@@ -125,6 +139,17 @@ function App() {
           </Routes>
         </main>
       </ToastProvider>
+
+      {/* Footer */}
+      <footer className="app-footer">
+        <div className="app-footer-left">
+          <span className="status-dot green"></span>
+          <span>VELOX P2P Network Protocol v2.4</span>
+        </div>
+        <div>
+          <span>WebRTC Direct Swarm • End-to-End In-Browser Hashing</span>
+        </div>
+      </footer>
     </>
   );
 }

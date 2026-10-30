@@ -62,12 +62,10 @@ export default function FileList({ token, activeTab, refreshKey }) {
     });
   }, [activeDownloads, addToast]);
 
-  const getFileTypeProps = (filename) => {
-    const ext = filename.includes('.') ? filename.split('.').pop().toUpperCase() : 'FILE';
-    if (ext === 'PDF') return { text: 'PDF', bg: '#423122', color: '#fbbf24' };
-    if (ext === 'DB' || ext === 'ACCDB') return { text: 'DB', bg: '#113528', color: '#34d399' };
-    if (ext === 'DOC' || ext === 'DOCX') return { text: 'DOC', bg: '#2e2548', color: '#c084fc' };
-    return { text: ext.substring(0, 3) || 'FILE', bg: '#1e293b', color: '#94a3b8' };
+  const getFileType = (filename) => {
+    if (!filename || !filename.includes('.')) return 'FILE';
+    const ext = filename.split('.').pop().toUpperCase();
+    return ext.length > 4 ? ext.substring(0, 4) : ext;
   };
 
   const fetchFiles = async () => {
@@ -167,8 +165,25 @@ export default function FileList({ token, activeTab, refreshKey }) {
     }
   };
 
-  if (loading) return <div>Loading files...</div>;
-  if (error) return <div style={{ color: 'var(--danger)' }}>{error}</div>;
+  if (loading) {
+    return (
+      <div className="dark-card" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        <div className="status-dot green" style={{ marginBottom: '0.75rem', transform: 'scale(1.3)' }}></div>
+        <div>Loading files from network...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="dark-card" style={{ padding: '2rem', color: 'var(--status-red)' }}>
+        <p>Error loading files: {error}</p>
+        <button className="btn-outline" onClick={fetchFiles} style={{ marginTop: '1rem' }}>
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   const filteredFiles = files.filter(file => {
     const matchesSearch = file.file_name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -177,28 +192,50 @@ export default function FileList({ token, activeTab, refreshKey }) {
   });
 
   return (
-    <div className="glass-panel" style={{ marginTop: '2rem' }}>
-      <p style={{ color: '#94a3b8', fontSize: '1rem', marginBottom: '1.5rem' }}>
+    <div className="dark-card">
+      <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '1.2rem', lineHeight: '1.4' }}>
         {activeTab === 'uploads'
           ? 'Manage the files you have shared to the network.'
           : 'All files registered for direct peer-to-peer transfer.'}
       </p>
 
-      <input
-        type="text"
-        placeholder="Search files by name..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        aria-label="Search files by name"
-        autoComplete="off"
-        className="input-group"
-        style={{ width: '100%', marginBottom: '1.5rem', padding: '0.5rem' }}
-      />
+      {/* Search Bar */}
+      <div className="search-input-wrapper">
+        <span className="search-input-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </span>
+        <input
+          type="text"
+          placeholder="Search files by name..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          aria-label="Search files by name"
+          autoComplete="off"
+          className="search-input"
+        />
+      </div>
 
       {filteredFiles.length === 0 ? (
-        <p>{searchQuery ? 'No matching files found.' : 'No files available on the network yet.'}</p>
+        <div style={{
+          padding: '2.5rem 1rem',
+          textAlign: 'center',
+          color: 'var(--text-muted)',
+          fontSize: '0.85rem',
+          background: 'var(--bg-inset)',
+          borderRadius: '8px',
+          border: '1px solid var(--border-subtle)'
+        }}>
+          {searchQuery
+            ? `No matching files found for "${searchQuery}".`
+            : activeTab === 'uploads'
+            ? "You haven't uploaded any files yet. Use 'Register a File to Seed' to share a file."
+            : 'No files registered on the network yet.'}
+        </div>
       ) : (
-        <ul className="file-list">
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
           {filteredFiles.map(file => {
             const dlState = activeDownloads[file.id];
             const isFailed = dlState && dlState.status && dlState.status.startsWith('failed');
@@ -206,62 +243,74 @@ export default function FileList({ token, activeTab, refreshKey }) {
             const isConnecting = dlState && dlState.status === 'connecting';
             const isDownloading = dlState && dlState.status === 'downloading';
             const progress = dlState ? dlState.progress || 0 : 0;
-            const typeProps = getFileTypeProps(file.file_name);
             const isPeerOnline = file.seeder_count > 0 || file.is_available;
+            const fileExt = getFileType(file.file_name);
 
             return (
-              <li key={file.id} className="file-item" style={{ alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-                  
-                  <div className="type-icon" style={{ background: typeProps.bg, color: typeProps.color }}>
-                    {typeProps.text}
+              <div key={file.id} className="file-item-row">
+                {/* Left side: Icon badge + File Details */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', overflow: 'hidden' }}>
+                  <div className="file-badge">
+                    {fileExt}
                   </div>
 
-                  <div>
-                    <strong style={{ fontSize: '1.1rem' }}>{!file.is_public && '🔒 '} {file.file_name}</strong>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#94a3b8', marginTop: '0.4rem', fontFamily: 'monospace' }}>
-                      <span 
-                        className="seeder-badge" 
-                        title="Peer Status" 
-                        style={{ 
-                          background: isPeerOnline ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                          color: isPeerOnline ? '#10b981' : '#ef4444',
-                          border: `1px solid ${isPeerOnline ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
-                        }}
-                      >
-                        {isPeerOnline ? '● Peer Online' : '○ Peer Offline'}
+                  <div style={{ overflow: 'hidden' }}>
+                    <div className="file-title">
+                      {!file.is_public && <span title="Private (Password Required)">🔒 </span>}
+                      {file.file_name}
+                    </div>
+                    <div className="file-meta-text">
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: isPeerOnline ? 'var(--status-green)' : 'var(--status-red)' }}>
+                        <span className={`status-dot ${isPeerOnline ? 'green' : 'red'}`} style={{ width: '6px', height: '6px' }}></span>
+                        {isPeerOnline ? 'Peer online' : 'Peer offline'}
                       </span>
-                      {formatBytes(file.total_size)} &bull; shared by {file.owner}
+                      <span className="file-meta-dot">•</span>
+                      <span>{formatBytes(file.total_size)}</span>
+                      <span className="file-meta-dot">•</span>
+                      <span style={{ color: 'var(--text-muted)' }}>shared by {file.owner}</span>
+
                       {isDownloading && dlState?.speed > 0 && (
-                        <span style={{ color: 'var(--primary)', marginLeft: '0.25rem' }}>
-                          &bull; {formatSpeed(dlState.speed)}
-                        </span>
+                        <>
+                          <span className="file-meta-dot">•</span>
+                          <span style={{ color: 'var(--accent-red)', fontWeight: 600 }}>
+                            {formatSpeed(dlState.speed)}
+                          </span>
+                        </>
                       )}
                       {isFailed && (
-                        <span style={{ color: '#ef4444', marginLeft: '0.25rem' }}>
-                          &bull; {dlState.status}
-                        </span>
+                        <>
+                          <span className="file-meta-dot">•</span>
+                          <span style={{ color: 'var(--status-red)' }}>
+                            {dlState.status}
+                          </span>
+                        </>
                       )}
                     </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+
+                {/* Right side: Action Buttons */}
+                <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexShrink: 0 }}>
                   {file.owner === currentUserEmail && (
-                    <button className="btn" style={{ background: 'transparent', border: '1px solid var(--danger)', color: 'var(--danger)' }} onClick={() => handleDelete(file.id)}>
+                    <button 
+                      type="button"
+                      className="btn-delete-text" 
+                      onClick={() => handleDelete(file.id)}
+                    >
                       Delete
                     </button>
                   )}
                   
                   {isFailed ? (
                     <button 
-                      className="btn" 
+                      type="button"
+                      className="btn-outline" 
                       onClick={() => handleRetry(file)}
                       style={{ 
-                        background: 'rgba(239, 68, 68, 0.15)', 
-                        border: '1px solid #ef4444', 
-                        color: '#ef4444',
-                        width: '120px', padding: '0.65rem 0.5rem', borderRadius: '8px',
-                        fontSize: '0.85rem', fontWeight: 600
+                        color: 'var(--status-red)', 
+                        borderColor: 'rgba(255, 71, 66, 0.4)',
+                        padding: '7px 14px',
+                        fontSize: '0.75rem'
                       }}
                       title={dlState.status}
                     >
@@ -269,93 +318,146 @@ export default function FileList({ token, activeTab, refreshKey }) {
                     </button>
                   ) : isComplete ? (
                     <button 
-                      className="btn" 
+                      type="button"
+                      className="btn-outline" 
                       disabled
                       style={{ 
-                        background: 'var(--success)', 
-                        border: 'none', 
-                        width: '120px', padding: '0.65rem 1rem', borderRadius: '8px'
+                        color: 'var(--status-green)', 
+                        borderColor: 'rgba(16, 185, 129, 0.4)',
+                        background: 'rgba(16, 185, 129, 0.08)',
+                        padding: '7px 14px',
+                        fontSize: '0.75rem'
                       }}
                     >
-                      Complete!
+                      Complete ✓
                     </button>
                   ) : isConnecting ? (
                     <button 
-                      className="btn" 
+                      type="button"
+                      className="btn-outline" 
                       disabled
                       style={{ 
-                        background: 'rgba(245, 158, 11, 0.15)', 
-                        border: '1px solid #f59e0b', 
-                        color: '#f59e0b',
-                        width: '120px', padding: '0.65rem 0.5rem', borderRadius: '8px',
-                        fontSize: '0.85rem'
+                        color: 'var(--status-amber)', 
+                        borderColor: 'rgba(245, 158, 11, 0.4)',
+                        padding: '7px 14px',
+                        fontSize: '0.75rem'
                       }}
                     >
                       Connecting...
                     </button>
                   ) : isDownloading ? (
                     <button 
-                      className="btn" 
+                      type="button"
                       disabled
                       style={{ 
-                        position: 'relative', overflow: 'hidden', 
-                        background: 'rgba(255,255,255,0.1)',
-                        border: '1px solid var(--primary)',
-                        width: '120px', padding: '0.75rem 1.5rem', borderRadius: '8px'
+                        position: 'relative', 
+                        overflow: 'hidden', 
+                        background: 'var(--bg-inset)',
+                        border: '1px solid var(--accent-red)',
+                        borderRadius: '6px',
+                        padding: '8px 16px',
+                        color: '#fff',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        minWidth: '100px',
+                        textAlign: 'center'
                       }}
                     >
                       <div style={{ 
                         position: 'absolute', top: 0, left: 0, bottom: 0, 
-                        background: 'var(--primary)', width: `${progress}%`, transition: 'width 0.2s', zIndex: 0 
+                        background: 'var(--accent-red)', width: `${progress}%`, transition: 'width 0.2s', zIndex: 0 
                       }} />
-                      <span style={{ position: 'relative', zIndex: 1, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
+                      <span style={{ position: 'relative', zIndex: 1 }}>
                         {`${Math.round(progress)}%`}
                       </span>
                     </button>
                   ) : (
                     <button 
-                      className="btn" 
+                      type="button"
+                      className={isPeerOnline ? 'btn-red' : 'btn-offline'} 
                       onClick={() => handleDownloadClick(file)}
-                      style={{
-                        opacity: isPeerOnline ? 1 : 0.6,
-                        cursor: isPeerOnline ? 'pointer' : 'not-allowed'
-                      }}
-                      title={isPeerOnline ? 'Download file via WebRTC' : 'Uploader is offline'}
+                      disabled={!isPeerOnline}
+                      title={isPeerOnline ? 'Download file via WebRTC direct swarm' : 'Uploader is currently offline'}
                     >
-                      {isPeerOnline ? 'Download' : 'Peer Offline'}
+                      {isPeerOnline ? 'DOWNLOAD' : 'Peer Offline'}
                     </button>
                   )}
                 </div>
-              </li>
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
 
+      {/* Password Prompt Modal */}
       {passwordPromptFile && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+          background: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          padding: '1.5rem'
         }}>
-          <div className="glass-panel" style={{ width: '90%', maxWidth: '400px' }}>
-            <h3>Private File</h3>
-            <p style={{ marginBottom: '1rem' }}>Please enter the password to download <strong>{passwordPromptFile.file_name}</strong>.</p>
-            {downloadError && <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{downloadError}</div>}
+          <div className="dark-card" style={{ width: '100%', maxWidth: '420px', padding: '2rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.6rem' }}>
+              <span className="status-dot red"></span>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#fff', margin: 0 }}>
+                Private File Access
+              </h3>
+            </div>
+            
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.25rem', lineHeight: '1.5' }}>
+              Please enter the password to download <strong style={{ color: '#fff' }}>{passwordPromptFile.file_name}</strong>.
+            </p>
+
+            {downloadError && (
+              <div style={{ 
+                color: 'var(--status-red)', 
+                background: 'rgba(255, 71, 66, 0.1)', 
+                border: '1px solid rgba(255, 71, 66, 0.25)', 
+                borderRadius: '6px', 
+                padding: '8px 12px', 
+                fontSize: '0.8rem', 
+                marginBottom: '1rem' 
+              }}>
+                {downloadError}
+              </div>
+            )}
+
             <form onSubmit={(e) => {
               e.preventDefault();
               handleDownload(passwordPromptFile.id, downloadPassword);
             }}>
-              <input
-                type="password"
-                placeholder="Password"
-                autoFocus
-                value={downloadPassword}
-                onChange={e => setDownloadPassword(e.target.value)}
-                style={{ width: '100%', padding: '0.5rem', marginBottom: '1rem' }}
-              />
-              <div style={{ display: 'flex', gap: '1rem' }}>
-                <button type="button" className="btn" onClick={() => setPasswordPromptFile(null)} style={{ background: 'transparent', border: '1px solid var(--glass-border)' }}>Cancel</button>
-                <button type="submit" className="btn" style={{ flex: 1 }}>Confirm Download</button>
+              <div className="form-group">
+                <label className="form-label">Password</label>
+                <input
+                  type="password"
+                  placeholder="Enter file password"
+                  autoFocus
+                  value={downloadPassword}
+                  onChange={e => setDownloadPassword(e.target.value)}
+                  className="form-input"
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+                <button 
+                  type="button" 
+                  className="btn-outline" 
+                  onClick={() => setPasswordPromptFile(null)} 
+                  style={{ flex: 1 }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn-red" 
+                  style={{ flex: 1.2 }}
+                >
+                  Confirm Download
+                </button>
               </div>
             </form>
           </div>
